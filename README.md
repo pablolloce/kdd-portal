@@ -37,8 +37,10 @@ y lanza con **«Ejecutar extensión (compilando antes)»** (compila con la tarea
 
 | Zona | Qué hace la demo |
 |---|---|
+| 👥 Selector de equipos | Desplegable en la barra superior (Frontend, Backend, QA & Datos). Cada equipo tiene su propio Google Group simulado, sus miembros, su chat, sus formaciones y su Knowledge Base. |
 | 💬 Chat | Historial inicial, *polling* cada 3 s, compañeros ficticios que escriben solos (con indicador «está escribiendo…»), tus mensajes a la derecha con el color de acento del tema. |
-| 🎓 Formaciones | Tarjetas con fecha, hora, creador y nº de asistentes. Botón **Apuntarse** (simula Calendar + Sheets) y formulario **＋ Nueva** que crea la tarjeta y publica un aviso en el chat. |
+| 📚 Knowledge Base | Pestaña con chat estilo Copilot: pregunta (o usa las sugerencias) y responde con *streaming*, citando documentos de la ruta local del equipo (`kb/<equipo>/…`). Clic en una fuente → notificación de VS Code (demo). |
+| 🎓 Formaciones | Tarjetas con fecha, hora, creador y nº de asistentes por equipo. Botón **Apuntarse** (simula Calendar + Sheets) y formulario **＋ Nueva** que crea la tarjeta y publica un aviso en el chat. |
 | 🎨 Tema | Todo usa variables CSS de VS Code (`--vscode-*`): cambia de tema claro/oscuro y el panel se adapta. |
 
 ---
@@ -69,6 +71,11 @@ y lanza con **«Ejecutar extensión (compilando antes)»** (compila con la tarea
    `vscode.authentication.getSession('google', …)`; hace falta un proveedor de
    autenticación de Google instalado en VS Code (los integrados son solo
    GitHub y Microsoft).
+5. **Knowledge Base:** la pestaña KB no pasa por Apps Script: usará la
+   Language Model API de VS Code (`vscode.lm.selectChatModels` con vendor
+   `copilot`) leyendo como contexto los documentos de la carpeta local de cada
+   equipo (`KB_BASE_PATH` en `media/main.js`). Requiere tener GitHub Copilot
+   instalado y sesión iniciada.
 
 ### Scopes OAuth usados
 

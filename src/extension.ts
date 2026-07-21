@@ -17,6 +17,11 @@ import * as vscode from 'vscode';
  * MODO MOCK.
  * true  → la identidad del usuario se simula (no se pide login de Google).
  * false → se usará vscode.authentication.getSession con un proveedor 'google'.
+ *
+ * NOTA (Knowledge Base): en modo real, la pestaña «Knowledge Base» usará la
+ * Language Model API de VS Code (vscode.lm.selectChatModels con vendor
+ * 'copilot') pasando como contexto los documentos de la ruta local del equipo
+ * (KB_BASE_PATH en media/main.js). En modo mock las respuestas se simulan.
  */
 const MOCK_MODE = true;
 
@@ -118,13 +123,20 @@ function openTeamHubPanel(
 
   // Mensajes que llegan desde el webview (JS del panel) hacia la extensión.
   panel.webview.onDidReceiveMessage(
-    (message: { type: string; level?: string; text?: string }) => {
+    (message: { type: string; level?: string; text?: string; path?: string }) => {
       if (message.type === 'notify' && message.text) {
         if (message.level === 'error') {
           void vscode.window.showErrorMessage(`Team Hub: ${message.text}`);
         } else {
           void vscode.window.showInformationMessage(`Team Hub: ${message.text}`);
         }
+      }
+      // Clic en una fuente citada por la Knowledge Base.
+      // En modo real: vscode.workspace.openTextDocument(rutaLocalKB + path).
+      if (message.type === 'openSource' && message.path) {
+        void vscode.window.showInformationMessage(
+          `Team Hub (demo): aquí se abriría «${message.path}» desde la ruta local de la Knowledge Base.`
+        );
       }
     },
     undefined,
@@ -195,47 +207,82 @@ function getWebviewContent(
         </div>
       </div>
       <div class="topbar-right">
+        <label class="select-wrap" title="Equipo activo">
+          <select id="teamSelect" aria-label="Seleccionar equipo"></select>
+        </label>
         <span class="badge-demo" id="badgeDemo" hidden>MODO DEMO</span>
         <span class="avatar avatar-own" id="userAvatar" title=""></span>
       </div>
     </header>
 
     <div class="demo-banner" id="demoBanner" hidden>
-      🧪 Estás viendo datos simulados: el chat, las formaciones y los compañeros
-      son ficticios. Nada se envía a Google.
+      🧪 Estás viendo datos simulados: los equipos, el chat, las formaciones y
+      la Knowledge Base son ficticios. Nada se envía a Google ni a Copilot.
     </div>
 
     <!-- ══════════════════ Columnas principales ══════════════════ -->
     <main class="columns">
 
-      <!-- ── Chat (Google Grupos) ── -->
-      <section class="panel chat-panel" aria-label="Chat del equipo">
-        <div class="panel-head">
-          <h2><span class="panel-icon">💬</span> Chat del equipo</h2>
-          <span class="sync" id="syncStatus">
-            <span class="dot"></span><span id="syncText">Sincronizando…</span>
-          </span>
+      <!-- ── Chat (Google Grupos) + Knowledge Base (Copilot) ── -->
+      <section class="panel chat-panel" aria-label="Chat y Knowledge Base">
+        <div class="tabs" role="tablist">
+          <button class="tab active" id="tabChat" type="button" role="tab"
+            aria-selected="true">💬 Chat</button>
+          <button class="tab" id="tabKb" type="button" role="tab"
+            aria-selected="false">📚 Knowledge Base</button>
         </div>
-        <div class="chat-list" id="chatList" aria-live="polite"></div>
-        <div class="typing" id="typing" hidden>
-          <span class="typing-dots"><i></i><i></i><i></i></span>
-          <span id="typingName"></span>&nbsp;está escribiendo…
+
+        <!-- Vista: chat del equipo -->
+        <div class="tab-view" id="viewChat" role="tabpanel">
+          <div class="panel-head">
+            <h2><span class="panel-icon">💬</span> Chat
+              <span class="head-sub" id="chatGroupEmail"></span></h2>
+            <span class="sync" id="syncStatus">
+              <span class="dot"></span><span id="syncText">Sincronizando…</span>
+            </span>
+          </div>
+          <div class="chat-list" id="chatList" aria-live="polite"></div>
+          <div class="typing" id="typing" hidden>
+            <span class="typing-dots"><i></i><i></i><i></i></span>
+            <span id="typingName"></span>&nbsp;está escribiendo…
+          </div>
+          <form class="chat-input" id="chatForm">
+            <textarea id="chatText" rows="1"
+              placeholder="Escribe un mensaje para el grupo…  (Enter para enviar)"></textarea>
+            <button class="btn primary send" type="submit" title="Enviar al grupo" aria-label="Enviar mensaje">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path fill="currentColor" d="M1.72 1.05a.75.75 0 0 0-.97.97l2.1 5.23L9 8 2.85 8.75l-2.1 5.23a.75.75 0 0 0 .97.97l13.5-6.1a.75.75 0 0 0 0-1.36L1.72 1.05Z"/>
+              </svg>
+            </button>
+          </form>
         </div>
-        <form class="chat-input" id="chatForm">
-          <textarea id="chatText" rows="1"
-            placeholder="Escribe un mensaje para el grupo…  (Enter para enviar)"></textarea>
-          <button class="btn primary send" type="submit" title="Enviar al grupo" aria-label="Enviar mensaje">
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-              <path fill="currentColor" d="M1.72 1.05a.75.75 0 0 0-.97.97l2.1 5.23L9 8 2.85 8.75l-2.1 5.23a.75.75 0 0 0 .97.97l13.5-6.1a.75.75 0 0 0 0-1.36L1.72 1.05Z"/>
-            </svg>
-          </button>
-        </form>
+
+        <!-- Vista: Knowledge Base (Copilot, simulado) -->
+        <div class="tab-view" id="viewKb" role="tabpanel" hidden>
+          <div class="kb-meta">
+            <span id="kbPath">📁 —</span>
+            <span id="kbDocs">📄 —</span>
+            <span>⚡ GitHub Copilot <em>(simulado)</em></span>
+          </div>
+          <div class="chat-list kb-list" id="kbList" aria-live="polite"></div>
+          <div class="kb-suggest" id="kbSuggest"></div>
+          <form class="chat-input" id="kbForm">
+            <textarea id="kbText" rows="1"
+              placeholder="Pregunta a la Knowledge Base…  (Enter para enviar)"></textarea>
+            <button class="btn primary send" type="submit" title="Preguntar" aria-label="Preguntar a la Knowledge Base">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path fill="currentColor" d="M1.72 1.05a.75.75 0 0 0-.97.97l2.1 5.23L9 8 2.85 8.75l-2.1 5.23a.75.75 0 0 0 .97.97l13.5-6.1a.75.75 0 0 0 0-1.36L1.72 1.05Z"/>
+              </svg>
+            </button>
+          </form>
+        </div>
       </section>
 
       <!-- ── Formaciones (Calendar + Sheets) ── -->
       <section class="panel form-panel" aria-label="Formaciones">
         <div class="panel-head">
-          <h2><span class="panel-icon">🎓</span> Próximas formaciones</h2>
+          <h2><span class="panel-icon">🎓</span> Formaciones
+            <span class="head-sub" id="formTeamLabel"></span></h2>
           <button class="btn ghost" id="btnToggleNueva" type="button">＋ Nueva</button>
         </div>
 

@@ -80,6 +80,42 @@ body {
   gap: 10px;
 }
 
+/* Selector de equipo (dropdown nativo con las variables de VS Code) */
+.select-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.select-wrap::after {
+  content: "▾";
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+}
+
+#teamSelect {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 26px 6px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--vscode-dropdown-foreground, var(--vscode-foreground));
+  background: var(--vscode-dropdown-background, var(--vscode-input-background));
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border, rgba(127, 127, 127, 0.3)));
+}
+
+#teamSelect:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
 .badge-demo {
   font-size: 10px;
   font-weight: 700;
@@ -166,6 +202,68 @@ body {
   display: flex;
   align-items: center;
   gap: 7px;
+  min-width: 0;
+}
+
+/* Sufijo contextual en cabeceras (email del grupo, nombre del equipo) */
+.head-sub {
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0.2px;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─────────────────────────────────────────────── Pestañas (Chat / KB) ── */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.2));
+  flex: none;
+}
+
+.tab {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 12px 8px;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+
+.tab:hover {
+  color: var(--vscode-foreground);
+}
+
+.tab.active {
+  color: var(--vscode-foreground);
+  font-weight: 600;
+  border-bottom-color: var(--vscode-button-background);
+}
+
+.tab:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.tab-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.tab-view[hidden] {
+  display: none;
 }
 
 .panel-icon {
@@ -358,6 +456,160 @@ body {
 @keyframes bounce {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
   30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* ═══════════════════════════════════════════════════ KNOWLEDGE BASE ═══ */
+
+/* Barra de contexto: ruta local, docs indexados y motor */
+.kb-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 8px 14px;
+  font-size: 10.5px;
+  color: var(--vscode-descriptionForeground);
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.2));
+  background: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.05));
+  flex: none;
+}
+
+.kb-meta em {
+  font-style: normal;
+  opacity: 0.75;
+}
+
+/* Respuesta de Copilot */
+.kb-answer {
+  max-width: 88%;
+  align-self: flex-start;
+  margin-top: 10px;
+  padding: 10px 13px 11px;
+  border-radius: 12px;
+  border: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.22));
+  border-left: 3px solid var(--vscode-charts-purple, #b180d7);
+  background: var(--vscode-editor-background);
+  animation: msg-in 0.22s ease both;
+}
+
+.kb-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 6px;
+}
+
+.kb-bot {
+  font-size: 13px;
+}
+
+.kb-time {
+  margin-left: auto;
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.kb-body {
+  font-size: 12.5px;
+  line-height: 1.55;
+  word-wrap: break-word;
+}
+
+.kb-body code {
+  font-family: var(--vscode-editor-font-family, "Consolas", monospace);
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.18));
+}
+
+.kb-body .li {
+  display: block;
+  padding-left: 8px;
+}
+
+/* Cursor de escritura durante el streaming */
+.caret {
+  display: inline-block;
+  width: 7px;
+  height: 12px;
+  margin-left: 2px;
+  vertical-align: -1px;
+  background: currentColor;
+  opacity: 0.7;
+  animation: blink 1s steps(2) infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* Fuentes citadas */
+.kb-sources {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.kb-sources:empty {
+  display: none;
+}
+
+.src-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.src-chip {
+  font-family: inherit;
+  font-size: 10.5px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  cursor: pointer;
+  color: var(--vscode-textLink-foreground, var(--vscode-foreground));
+  background: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.08));
+  border: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.3));
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.src-chip:hover {
+  border-color: var(--vscode-focusBorder);
+  background: var(--vscode-toolbar-hoverBackground, rgba(127, 127, 127, 0.12));
+}
+
+/* Preguntas sugeridas */
+.kb-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px 0;
+  flex: none;
+}
+
+.sug-chip {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 4px 11px;
+  border-radius: 99px;
+  cursor: pointer;
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: 1px dashed var(--vscode-panel-border, rgba(127, 127, 127, 0.4));
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.sug-chip:hover {
+  border-color: var(--vscode-focusBorder);
+  border-style: solid;
+  background: var(--vscode-toolbar-hoverBackground, rgba(127, 127, 127, 0.1));
 }
 
 /* Caja de escritura */

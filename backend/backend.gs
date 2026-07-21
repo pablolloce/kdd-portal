@@ -37,6 +37,13 @@
 
 // ───────────────────────────────────────────────────────────── CONFIG ──────
 
+/*
+ * NOTA MULTI-EQUIPO: la extensión envía en cada petición un parámetro
+ * `team` (id del equipo activo). Para soportar varios equipos en real,
+ * convierte GROUP_EMAIL y CALENDAR_ID en mapas { teamId: valor } y
+ * resuélvelos con ese parámetro; las hojas pueden compartirse añadiendo
+ * una columna "Equipo".
+ */
 var CONFIG = {
   /** ID del spreadsheet que actúa de base de datos. */
   SPREADSHEET_ID: 'PEGA_AQUI_EL_ID_DEL_SPREADSHEET',
