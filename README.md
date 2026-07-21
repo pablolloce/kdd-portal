@@ -13,16 +13,25 @@ integra con el tema del editor.
 
 ## 🚀 Probar la demo
 
-Requisitos: Node.js 18+ y VS Code 1.85+.
+Requisitos: VS Code 1.85+. Node/npm solo hacen falta para **recompilar** el
+TypeScript; la extensión no tiene dependencias en tiempo de ejecución.
+
+**Vía rápida (sin npm)** — si la carpeta `out/` ya existe (el ZIP de la demo
+la incluye compilada):
+
+1. Abre esta carpeta en VS Code.
+2. Pulsa **F5** con la configuración
+   **«Ejecutar extensión (precompilada, sin npm)»**.
+3. En la ventana nueva: `Ctrl+Shift+P` → **«Team Hub: Abrir Team Hub»**.
+
+**Vía completa (con npm)** — para modificar el código de `src/`:
 
 ```bash
 npm install
 ```
 
-1. Abre esta carpeta en VS Code.
-2. Pulsa **F5** (lanza una ventana "Extension Development Host"; la primera
-   compilación la hace la tarea `npm: compile` automáticamente).
-3. En la ventana nueva: `Ctrl+Shift+P` → **«Team Hub: Abrir Team Hub»**.
+y lanza con **«Ejecutar extensión (compilando antes)»** (compila con la tarea
+`npm: compile` en cada F5).
 
 ### Qué puedes probar
 
