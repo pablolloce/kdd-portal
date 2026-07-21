@@ -120,7 +120,17 @@ function openTeamHubPanel(
   );
   currentPanel = panel;
 
-  panel.webview.html = getWebviewContent(panel.webview, context.extensionUri, user);
+  // Versión del manifest: se muestra en la insignia del panel para poder
+  // comprobar de un vistazo qué versión de la extensión está instalada.
+  const version = String(
+    (context.extension.packageJSON as { version?: string }).version ?? ''
+  );
+  panel.webview.html = getWebviewContent(
+    panel.webview,
+    context.extensionUri,
+    user,
+    version
+  );
 
   // Mensajes que llegan desde el webview (JS del panel) hacia la extensión.
   panel.webview.onDidReceiveMessage(
@@ -157,7 +167,8 @@ function openTeamHubPanel(
 function getWebviewContent(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
-  user: UserInfo
+  user: UserInfo,
+  version: string
 ): string {
   const styleUri = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, 'media', 'main.css')
@@ -169,7 +180,7 @@ function getWebviewContent(
 
   // Configuración inyectada al webview. El replace evita cerrar la etiqueta
   // <script> si algún dato contuviera '<'.
-  const config = JSON.stringify({ user, mockMode: MOCK_MODE }).replace(
+  const config = JSON.stringify({ user, mockMode: MOCK_MODE, version }).replace(
     /</g,
     '\\u003c'
   );

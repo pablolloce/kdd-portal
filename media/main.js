@@ -1355,6 +1355,8 @@
 
   async function init() {
     if (MOCK_MODE) {
+      $('badgeDemo').textContent =
+        'MODO DEMO' + (CONFIG.version ? ' · v' + CONFIG.version : '');
       $('badgeDemo').hidden = false;
       $('demoBanner').hidden = false;
     }

@@ -10,6 +10,11 @@
   padding: 0;
 }
 
+/* El atributo hidden debe ganar SIEMPRE, aunque la clase defina display. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   height: 100%;
@@ -321,10 +326,6 @@ body {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-}
-
-.tab-view[hidden] {
-  display: none;
 }
 
 .panel-icon {
