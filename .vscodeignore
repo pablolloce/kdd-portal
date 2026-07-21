@@ -1,0 +1,9 @@
+# Archivos que NO van dentro del paquete .vsix
+.vscode/**
+src/**
+backend/**
+node_modules/**
+out/**/*.map
+tsconfig.json
+.gitignore
+**/*.zip
