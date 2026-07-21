@@ -1,0 +1,35 @@
+{
+  "name": "team-hub",
+  "displayName": "Team Hub",
+  "description": "Hub de equipo dentro de VS Code: chat (Google Grupos), formaciones (Calendar + Sheets). Versión DEMO con datos simulados.",
+  "version": "0.1.0",
+  "publisher": "kdd-demo",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "teamHub.open",
+        "title": "Abrir Team Hub",
+        "category": "Team Hub"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}
