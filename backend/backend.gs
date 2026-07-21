@@ -38,11 +38,16 @@
 // ───────────────────────────────────────────────────────────── CONFIG ──────
 
 /*
- * NOTA MULTI-EQUIPO: la extensión envía en cada petición un parámetro
- * `team` (id del equipo activo). Para soportar varios equipos en real,
- * convierte GROUP_EMAIL y CALENDAR_ID en mapas { teamId: valor } y
- * resuélvelos con ese parámetro; las hojas pueden compartirse añadiendo
- * una columna "Equipo".
+ * NOTA MULTI-EQUIPO (área de Tesorería): la extensión envía en cada
+ * petición un parámetro `team` (id del equipo activo).
+ *  - El chat es POR EQUIPO: convierte GROUP_EMAIL en un mapa
+ *    { teamId: email-del-grupo } y resuélvelo con ese parámetro.
+ *  - Las formaciones son GLOBALES del área: una única hoja "Formaciones"
+ *    con columna "Equipo" (el equipo organizador) y un único calendario
+ *    compartido del área (o un mapa de calendarios si se prefiere).
+ *  - La hoja "Usuarios" (Email | Equipo) indica el equipo de cada persona;
+ *    la extensión lo pide con action=getUserInfo al arrancar y con él
+ *    decide qué Knowledge Base completa mostrar.
  */
 var CONFIG = {
   /** ID del spreadsheet que actúa de base de datos. */
@@ -64,15 +69,17 @@ var CONFIG = {
   DEFAULT_DURATION_MIN: 60,
 
   SHEET_FORMACIONES: 'Formaciones',
-  SHEET_ASISTENTES: 'Asistentes'
+  SHEET_ASISTENTES: 'Asistentes',
+  SHEET_USUARIOS: 'Usuarios'
 };
 
 // ─────────────────────────────────────────────────────────── ROUTING ───────
 
 /**
  * GET → acciones de lectura.
- *   ?action=getChat
- *   ?action=getFormaciones&email=usuario@dominio.com
+ *   ?action=getUserInfo&email=usuario@banco.com   → equipo del usuario
+ *   ?action=getChat&team=front-office
+ *   ?action=getFormaciones&email=usuario@banco.com   (globales del área)
  */
 function doGet(e) {
   try {
@@ -80,6 +87,8 @@ function doGet(e) {
     var email = (e && e.parameter && e.parameter.email) || '';
 
     switch (action) {
+      case 'getUserInfo':
+        return jsonOut_({ ok: true, team: getUserTeam_(email) });
       case 'getChat':
         return jsonOut_({ ok: true, messages: getChat_() });
       case 'getFormaciones':
@@ -182,12 +191,13 @@ function cleanBody_(body) {
 // ─────────────────────────────── FORMACIONES (Calendar + Sheets) ───────────
 
 /**
- * Devuelve las formaciones futuras registradas en la hoja "Formaciones",
- * con el nº de asistentes y si `userEmail` ya está apuntado.
+ * Devuelve TODAS las formaciones futuras del área (de todos los equipos),
+ * con el equipo organizador, el nº de asistentes y si `userEmail` ya está
+ * apuntado. El filtrado por equipo se hace en la extensión.
  *
  * Columnas de "Formaciones":
  *   A: ID | B: Titulo | C: FechaISO | D: Descripcion
- *   E: EventoCalendarId | F: Creador | G: CreadoEl
+ *   E: EventoCalendarId | F: Creador | G: CreadoEl | H: Equipo
  */
 function getFormaciones_(userEmail) {
   var sheet = getSheet_(CONFIG.SHEET_FORMACIONES);
@@ -208,6 +218,7 @@ function getFormaciones_(userEmail) {
         fecha: new Date(row[2]).toISOString(),
         descripcion: row[3],
         creador: row[5],
+        teamId: String(row[7] || ''),
         asistentes: lista.length,
         apuntado: userEmail ? lista.indexOf(userEmail) !== -1 : false
       };
@@ -236,10 +247,10 @@ function createFormacion_(body) {
     description: (body.descripcion || '') + '\n\nCreado desde Team Hub por ' + body.name
   });
 
-  // 1) Registro en Sheets.
+  // 1) Registro en Sheets (columna H = equipo organizador).
   getSheet_(CONFIG.SHEET_FORMACIONES).appendRow([
     id, body.titulo, inicio.toISOString(), body.descripcion || '',
-    evento.getId(), body.name, new Date().toISOString()
+    evento.getId(), body.name, new Date().toISOString(), body.team || ''
   ]);
 
   // El creador queda apuntado automáticamente.
@@ -267,6 +278,7 @@ function createFormacion_(body) {
     fecha: inicio.toISOString(),
     descripcion: body.descripcion || '',
     creador: body.name,
+    teamId: body.team || '',
     asistentes: 1,
     apuntado: true
   };
@@ -308,9 +320,30 @@ function rsvpFormacion_(body) {
     fecha: new Date(row[2]).toISOString(),
     descripcion: row[3],
     creador: row[5],
+    teamId: String(row[7] || ''),
     asistentes: asistentes.length,
     apuntado: true
   };
+}
+
+// ─────────────────────────────────────────────────────────── USUARIOS ──────
+
+/**
+ * Devuelve el id de equipo del usuario según la hoja "Usuarios"
+ * (columnas: A Email | B Equipo). Es lo que permite a la extensión saber
+ * qué Knowledge Base completa mostrar y cuáles son ajenas (reducidas).
+ */
+function getUserTeam_(email) {
+  if (!email) return '';
+  var sheet = getSheet_(CONFIG.SHEET_USUARIOS);
+  var rows = sheet.getDataRange().getValues().slice(1);
+  var normalizado = String(email).trim().toLowerCase();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]).trim().toLowerCase() === normalizado) {
+      return String(rows[i][1] || '');
+    }
+  }
+  return '';
 }
 
 // ─────────────────────────────────────────────────────── SHEETS helpers ────
@@ -345,12 +378,17 @@ function setup() {
   if (!ss.getSheetByName(CONFIG.SHEET_FORMACIONES)) {
     ss.insertSheet(CONFIG.SHEET_FORMACIONES).appendRow([
       'ID', 'Titulo', 'FechaISO', 'Descripcion',
-      'EventoCalendarId', 'Creador', 'CreadoEl'
+      'EventoCalendarId', 'Creador', 'CreadoEl', 'Equipo'
     ]);
   }
   if (!ss.getSheetByName(CONFIG.SHEET_ASISTENTES)) {
     ss.insertSheet(CONFIG.SHEET_ASISTENTES).appendRow([
       'FormacionID', 'Email', 'FechaInscripcion'
+    ]);
+  }
+  if (!ss.getSheetByName(CONFIG.SHEET_USUARIOS)) {
+    ss.insertSheet(CONFIG.SHEET_USUARIOS).appendRow([
+      'Email', 'Equipo'
     ]);
   }
 }

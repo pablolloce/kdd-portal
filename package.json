@@ -2,7 +2,7 @@
   "name": "team-hub",
   "displayName": "Team Hub",
   "description": "Hub de equipo dentro de VS Code: chat (Google Grupos), formaciones (Calendar + Sheets). Versión DEMO con datos simulados.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "kdd-demo",
   "private": true,
   "license": "MIT",

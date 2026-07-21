@@ -1,8 +1,9 @@
-# Team Hub — Extensión de VS Code (versión DEMO)
+# Team Hub · Área de Tesorería — Extensión de VS Code (versión DEMO)
 
-Hub de equipo dentro de VS Code: **chat del equipo** (Google Grupos) y
-**formaciones** (Google Calendar + Sheets), renderizado en un Webview que se
-integra con el tema del editor.
+Hub para los equipos de las aplicaciones tecnológicas del área de Tesorería
+de un banco: **chat por equipo** (Google Grupos), **formaciones del área**
+(Google Calendar + Sheets) y **Knowledge Base** por equipo (Copilot + ruta
+local), renderizado en un Webview que se integra con el tema del editor.
 
 > 🧪 **Estado actual: MODO MOCK.** Toda la interfaz funciona con datos
 > simulados (usuario ficticio, compañeros que responden solos, formaciones de
@@ -37,10 +38,10 @@ y lanza con **«Ejecutar extensión (compilando antes)»** (compila con la tarea
 
 | Zona | Qué hace la demo |
 |---|---|
-| 👥 Selector de equipos | Desplegable en la barra superior (Frontend, Backend, QA & Datos). Cada equipo tiene su propio Google Group simulado, sus miembros, su chat, sus formaciones y su Knowledge Base. |
-| 💬 Chat | Historial inicial, *polling* cada 3 s, compañeros ficticios que escriben solos (con indicador «está escribiendo…»), tus mensajes a la derecha con el color de acento del tema. |
-| 📚 Knowledge Base | Pestaña con chat estilo Copilot: pregunta (o usa las sugerencias) y responde con *streaming*, citando documentos de la ruta local del equipo (`kb/<equipo>/…`). Clic en una fuente → notificación de VS Code (demo). |
-| 🎓 Formaciones | Tarjetas con fecha, hora, creador y nº de asistentes por equipo. Botón **Apuntarse** (simula Calendar + Sheets) y formulario **＋ Nueva** que crea la tarjeta y publica un aviso en el chat. |
+| 👥 Selector de equipos | Desplegable con los equipos de las aplicaciones de Tesorería: 💱 Front Office (Murex), 💧 Liquidez y Pagos, 📊 Riesgos y Límites, 🧾 Back Office y Conciliación. El backend indica **tu equipo** (María Dev → Front Office) y arrancas en él. |
+| 💬 Chat | Un Google Group simulado por equipo: historial, *polling* cada 3 s, compañeros ficticios que escriben solos (con «está escribiendo…»). En el chat de **otro equipo** aparece un aviso de paciencia (pregunta solo si su KB no resolvió tu duda) y las respuestas tardan más. |
+| 📚 Knowledge Base | Pestaña con chat estilo Copilot: responde con *streaming* citando documentos de la ruta local del equipo (`kb/<equipo>/…`). La KB de tu equipo es completa; la de **otros equipos** es una **versión reducida** con aviso de posibles errores y advertencia en cada respuesta. |
+| 🎓 Formaciones | Listado **global del área** (todos los equipos), cada tarjeta con el equipo organizador. Filtro «Todas / De <equipo>» para ver las que ha montado el equipo seleccionado. **Apuntarse** simula Calendar + Sheets; **＋ Nueva** crea la formación a nombre del equipo activo y avisa en su chat. |
 | 🎨 Tema | Todo usa variables CSS de VS Code (`--vscode-*`): cambia de tema claro/oscuro y el panel se adapta. |
 
 ---

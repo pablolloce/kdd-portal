@@ -77,8 +77,9 @@ export function deactivate(): void {
  */
 async function getUserSession(): Promise<UserInfo | undefined> {
   if (MOCK_MODE) {
-    // Usuario simulado para la demo visual.
-    return { name: 'María Dev', email: 'maria.dev@equipo.demo' };
+    // Usuaria simulada para la demo visual (área de Tesorería).
+    // Su equipo lo determina el backend (acción getUserInfo, hoja "Usuarios").
+    return { name: 'María Dev', email: 'maria.dev@banco.demo' };
   }
 
   // Modo real: pide (o reutiliza) una sesión de Google.
@@ -216,8 +217,9 @@ function getWebviewContent(
     </header>
 
     <div class="demo-banner" id="demoBanner" hidden>
-      🧪 Estás viendo datos simulados: los equipos, el chat, las formaciones y
-      la Knowledge Base son ficticios. Nada se envía a Google ni a Copilot.
+      🧪 Demo con datos simulados del área de Tesorería: los equipos, el chat,
+      las formaciones y la Knowledge Base son ficticios. Nada se envía a
+      Google ni a Copilot.
     </div>
 
     <!-- ══════════════════ Columnas principales ══════════════════ -->
@@ -240,6 +242,11 @@ function getWebviewContent(
             <span class="sync" id="syncStatus">
               <span class="dot"></span><span id="syncText">Sincronizando…</span>
             </span>
+          </div>
+          <div class="warn-banner" id="chatWarn" hidden>
+            ⚠️ Este es el chat de <strong>otro equipo</strong>: ten paciencia
+            con las respuestas y pregunta solo si su Knowledge Base no ha
+            podido resolver tu duda.
           </div>
           <div class="chat-list" id="chatList" aria-live="polite"></div>
           <div class="typing" id="typing" hidden>
@@ -264,6 +271,12 @@ function getWebviewContent(
             <span id="kbDocs">📄 —</span>
             <span>⚡ GitHub Copilot <em>(simulado)</em></span>
           </div>
+          <div class="warn-banner" id="kbWarn" hidden>
+            ⚠️ <strong>Knowledge Base reducida:</strong> estás consultando la
+            KB de otro equipo. Puede contener errores o información
+            desactualizada; para temas críticos confirma con el equipo
+            propietario.
+          </div>
           <div class="chat-list kb-list" id="kbList" aria-live="polite"></div>
           <div class="kb-suggest" id="kbSuggest"></div>
           <form class="chat-input" id="kbForm">
@@ -284,6 +297,12 @@ function getWebviewContent(
           <h2><span class="panel-icon">🎓</span> Formaciones
             <span class="head-sub" id="formTeamLabel"></span></h2>
           <button class="btn ghost" id="btnToggleNueva" type="button">＋ Nueva</button>
+        </div>
+
+        <!-- Filtro: todas las formaciones del área vs. las del equipo activo -->
+        <div class="filter-row">
+          <button class="filter-chip active" id="filtAll" type="button">Todas</button>
+          <button class="filter-chip" id="filtTeam" type="button">Del equipo</button>
         </div>
 
         <form class="form-nueva" id="formNueva" hidden>

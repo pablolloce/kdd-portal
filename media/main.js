@@ -1,16 +1,19 @@
 /* ════════════════════════════════════════════════════════════════════════
-   Team Hub — lógica del webview (JavaScript vanilla, sin frameworks)
+   Team Hub · Área de Tesorería — lógica del webview (JS vanilla)
 
    MODO MOCK: mientras MOCK_MODE sea true, todas las llamadas a la "API"
-   se resuelven contra un backend simulado en memoria (MockBackend), con
-   latencia artificial, varios EQUIPOS con compañeros ficticios que
-   escriben en el chat, formaciones de ejemplo y una Knowledge Base que
-   imita a Copilot citando documentos de una ruta local. Nada sale de
-   este webview.
+   se resuelven contra un backend simulado en memoria (MockBackend):
+   equipos de las aplicaciones tecnológicas de Tesorería, compañeros
+   ficticios que escriben en el chat, formaciones del área y una
+   Knowledge Base que imita a Copilot citando documentos de una ruta
+   local. Nada sale de este webview.
 
    MODO REAL: al poner MOCK_MODE = false…
-    - chat/formaciones → fetch a la Web App de Google Apps Script
-      (APPS_SCRIPT_URL, ver backend/backend.gs), pasando el equipo activo.
+    - chat/formaciones/usuario → fetch a la Web App de Google Apps Script
+      (APPS_SCRIPT_URL, ver backend/backend.gs). La acción getUserInfo
+      devuelve el EQUIPO del usuario (hoja "Usuarios"), que determina su
+      Knowledge Base completa; las KB de otros equipos son la versión
+      reducida.
     - Knowledge Base → Language Model API de VS Code (Copilot) con los
       documentos de KB_BASE_PATH/<equipo> como contexto.
    ════════════════════════════════════════════════════════════════════════ */
@@ -44,7 +47,7 @@
       ? acquireVsCodeApi()
       : { postMessage: function () {} };
 
-  const USER = CONFIG.user || { name: 'Usuario demo', email: 'demo@equipo.demo' };
+  const USER = CONFIG.user || { name: 'Usuario demo', email: 'demo@banco.demo' };
 
   // ──────────────────────────────────────────────────────────── Utilidades ──
 
@@ -142,183 +145,245 @@
     return d.toISOString();
   }
 
-  // ═══════════════════════════════════════════════════════════ EQUIPOS ═══
-  //  Cada equipo simula: su Google Group (chat), su calendario de
-  //  formaciones y su carpeta de Knowledge Base en la ruta local.
+  // ══════════════════════════════════════ EQUIPOS DEL ÁREA DE TESORERÍA ═══
+  //  Cada equipo mantiene una de las aplicaciones tecnológicas del área:
+  //  su Google Group (chat), sus formaciones y su carpeta de Knowledge
+  //  Base en la ruta local.
   // ═══════════════════════════════════════════════════════════════════════
 
   const TEAMS = [
     {
-      id: 'frontend',
-      nombre: 'Equipo Frontend',
-      icon: '🎨',
-      grupo: 'frontend@equipo.demo',
-      kbFolder: 'equipo-frontend',
-      kbDocs: 12,
+      id: 'front-office',
+      nombre: 'Front Office (Murex)',
+      corto: 'Front Office',
+      icon: '💱',
+      grupo: 'fo-murex@banco.demo',
+      kbFolder: 'front-office-murex',
+      kbDocs: 14,
       members: [
-        { name: 'Ana García', email: 'ana.garcia@equipo.demo' },
-        { name: 'Luis Martín', email: 'luis.martin@equipo.demo' },
-        { name: 'Sara Ortega', email: 'sara.ortega@equipo.demo' }
+        { name: 'Lucía Ferrer', email: 'lucia.ferrer@banco.demo' },
+        { name: 'Marcos Peña', email: 'marcos.pena@banco.demo' },
+        { name: 'Irene Solano', email: 'irene.solano@banco.demo' }
       ],
       kbSuggestions: [
-        '¿Dónde está la guía de estilos?',
-        '¿Cómo se despliega a producción?',
-        '¿Qué framework de testing usamos?'
+        '¿Cómo relanzo el EOD si falla?',
+        '¿Dónde está la guía de pricing de swaps?',
+        '¿Cuál es el proceso de pases a producción?'
       ],
       kb: [
         {
-          keywords: ['estilo', 'guia', 'css', 'componente', 'diseno', 'tokens'],
+          keywords: ['eod', 'batch', 'cierre', 'nocturno', 'relanzar', 'curva'],
           answer:
-            'La guía de estilos está en `kb/equipo-frontend/guia-estilos.md`.\n\n' +
-            '- Usamos **tokens de diseño** en `tokens.css` (colores, espaciado, tipografía).\n' +
-            '- Los componentes compartidos viven en `src/ui/` y se documentan en Storybook.\n' +
-            '- Antes de crear un componente nuevo, revisa el **inventario** para no duplicar.',
+            'El **EOD de Murex** se lanza a las 22:30 desde el orquestador:\n\n' +
+            '- Si falla la carga de curvas, revisa primero el feed de market data (`MDCS`).\n' +
+            '- Relanza solo el bloque fallido con `relanzar_eod.sh --paso <n>`; nunca el EOD completo sin avisar.\n' +
+            '- Si el fallo afecta a la valoración oficial, comunícalo a Riesgos antes de las 7:30.',
           sources: [
-            'kb/equipo-frontend/guia-estilos.md',
-            'kb/equipo-frontend/componentes/inventario.md'
+            'kb/front-office-murex/eod.md',
+            'kb/front-office-murex/runbooks/relanzar-eod.md'
           ]
         },
         {
-          keywords: ['deploy', 'desplegar', 'produccion', 'publicar', 'release', 'hotfix'],
+          keywords: ['pricer', 'pricing', 'valoracion', 'swap', 'derivado', 'curvas'],
           answer:
-            'El despliegue a producción es automático al hacer **merge a `main`**:\n\n' +
-            '- La CI ejecuta lint + tests + build (GitHub Actions).\n' +
-            '- Si todo pasa, se publica y se etiqueta la release.\n' +
-            '- Para un **hotfix**, usa una rama `hotfix/*` y avisa en el chat del equipo.',
+            'La valoración de swaps usa los **pricers del módulo MX.3**:\n\n' +
+            '- Curvas de descuento OIS (€STR) y proyección según el índice de la pata.\n' +
+            '- La configuración de generadores de curva está documentada con capturas.\n' +
+            '- Cualquier cambio de convención requiere visto bueno de Riesgos y prueba en UAT.',
           sources: [
-            'kb/equipo-frontend/ci-cd.md',
-            'kb/equipo-frontend/runbooks/deploy.md'
+            'kb/front-office-murex/guia-pricing.md',
+            'kb/front-office-murex/curvas.md'
           ]
         },
         {
-          keywords: ['test', 'testing', 'prueba', 'vitest', 'playwright', 'cobertura'],
+          keywords: ['pase', 'produccion', 'despliegue', 'uat', 'parche', 'entorno', 'cambio'],
           answer:
-            'Estrategia de testing del equipo:\n\n' +
-            '- **Unitarios**: Vitest (`npm test`), cobertura mínima del 80%.\n' +
-            '- **E2E**: Playwright, en la pipeline nocturna.\n' +
-            '- Los mocks compartidos están en `test/fixtures/`.',
+            'Proceso de **pases a producción** de Murex:\n\n' +
+            '- Todo pase se presenta en el comité de cambios de los miércoles.\n' +
+            '- Ventana de despliegue: martes y jueves 19:00–21:00 (nunca en cierre de mes).\n' +
+            '- Se exige evidencia de prueba en UAT firmada por la mesa afectada.',
           sources: [
-            'kb/equipo-frontend/testing.md',
-            'kb/equipo-frontend/runbooks/e2e.md'
+            'kb/front-office-murex/pases.md',
+            'kb/front-office-murex/comite-cambios.md'
           ]
         }
       ],
       kbFallbackSources: [
-        'kb/equipo-frontend/indice.md',
-        'kb/equipo-frontend/faq.md'
+        'kb/front-office-murex/indice.md',
+        'kb/front-office-murex/faq.md'
       ]
     },
     {
-      id: 'backend',
-      nombre: 'Equipo Backend',
-      icon: '⚙️',
-      grupo: 'backend@equipo.demo',
-      kbFolder: 'equipo-backend',
-      kbDocs: 18,
+      id: 'liquidez',
+      nombre: 'Liquidez y Pagos',
+      corto: 'Liquidez',
+      icon: '💧',
+      grupo: 'liquidez-pagos@banco.demo',
+      kbFolder: 'liquidez-pagos',
+      kbDocs: 11,
       members: [
-        { name: 'Carlos Ruiz', email: 'carlos.ruiz@equipo.demo' },
-        { name: 'Elena Vidal', email: 'elena.vidal@equipo.demo' },
-        { name: 'Jorge Peña', email: 'jorge.pena@equipo.demo' }
+        { name: 'Nuria Campos', email: 'nuria.campos@banco.demo' },
+        { name: 'Óscar Molina', email: 'oscar.molina@banco.demo' }
       ],
       kbSuggestions: [
-        '¿Cómo se hace una migración de base de datos?',
-        '¿Cuál es la convención para los errores de la API?',
-        '¿Cómo se despliega un servicio?'
+        '¿Cómo libero un pago retenido?',
+        '¿Cada cuánto se hace el barrido de nostros?',
+        '¿De dónde se alimenta el forecast de liquidez?'
       ],
       kb: [
         {
-          keywords: ['migracion', 'base de datos', 'bd', 'sql', 'postgres', 'flyway', 'esquema'],
+          keywords: ['pago', 'retenido', 'swift', 'mx', 'iso 20022', 'pacs', 'liberar', 'sanciones'],
           answer:
-            'Las migraciones se gestionan con **Flyway** sobre PostgreSQL:\n\n' +
-            '- Crea el fichero en `db/migrations/` con el patrón `V<n>__descripcion.sql`.\n' +
-            '- Se aplican automáticamente al desplegar; **nunca** edites una migración ya aplicada.\n' +
-            '- Para datos sensibles, coordina la ventana con el equipo en el chat.',
+            'Los **pagos retenidos** quedan en la cola del filtro de sanciones:\n\n' +
+            '- Revisa el motivo en el monitor de pagos (pestaña *Compliance*).\n' +
+            '- Solo Cumplimiento puede liberar; nosotros documentamos y reclamamos por el buzón oficial.\n' +
+            '- Con ISO 20022, los `pacs.008` rechazados devuelven un `pacs.002` con el código de motivo.',
           sources: [
-            'kb/equipo-backend/migraciones.md',
-            'kb/equipo-backend/runbooks/flyway.md'
+            'kb/liquidez-pagos/pagos-retenidos.md',
+            'kb/liquidez-pagos/swift-mx.md'
           ]
         },
         {
-          keywords: ['api', 'error', 'errores', 'rest', 'endpoint', 'convencion', 'http'],
+          keywords: ['nostro', 'barrido', 'sweeping', 'cuenta', 'saldo'],
           answer:
-            'Convenciones de la API REST:\n\n' +
-            '- Versionado por ruta: `/v1/...`.\n' +
-            '- Errores en formato **RFC 7807** (`application/problem+json`).\n' +
-            '- Los códigos y mensajes estándar están tabulados en la guía de la API.',
-          sources: ['kb/equipo-backend/guia-api.md']
+            'El **barrido de cuentas nostro** (sweeping) corre dos veces al día:\n\n' +
+            '- 11:30 CET → posiciones en EUR (vía TARGET2).\n' +
+            '- 16:00 CET → resto de divisas según el cutoff de cada corresponsal.\n' +
+            '- Los umbrales por cuenta se mantienen en la tabla `SWEEP_CONFIG`.',
+          sources: ['kb/liquidez-pagos/nostros.md']
         },
         {
-          keywords: ['deploy', 'desplegar', 'servicio', 'produccion', 'cloud run', 'publicar'],
+          keywords: ['forecast', 'liquidez', 'prevision', 'intradia', 'dashboard', 'buffer'],
           answer:
-            'Cada servicio se despliega a **Cloud Run** desde su pipeline:\n\n' +
-            '- Merge a `main` → build de imagen → despliegue *canary* al 10%.\n' +
-            '- Si las métricas aguantan 15 min, se promociona al 100%.\n' +
-            '- El rollback es un clic en la revisión anterior (ver runbook).',
+            'El **forecast de liquidez intradía** se alimenta de tres fuentes:\n\n' +
+            '- Vencimientos de tesorería (posiciones de Murex, corte 7:00).\n' +
+            '- Previsión de pagos de clientes (fichero de las sucursales).\n' +
+            '- Movimientos de mercado confirmados por Back Office.\n\n' +
+            'El dashboard se refresca cada 15 min; el buffer regulatorio se marca en rojo si baja del umbral.',
           sources: [
-            'kb/equipo-backend/ci-cd.md',
-            'kb/equipo-backend/runbooks/rollback.md'
+            'kb/liquidez-pagos/forecast.md',
+            'kb/liquidez-pagos/dashboard.md'
           ]
         }
       ],
       kbFallbackSources: [
-        'kb/equipo-backend/indice.md',
-        'kb/equipo-backend/arquitectura.md'
+        'kb/liquidez-pagos/indice.md',
+        'kb/liquidez-pagos/faq.md'
       ]
     },
     {
-      id: 'qa-datos',
-      nombre: 'Equipo QA & Datos',
-      icon: '🧪',
-      grupo: 'qa-datos@equipo.demo',
-      kbFolder: 'equipo-qa-datos',
+      id: 'riesgos',
+      nombre: 'Riesgos y Límites',
+      corto: 'Riesgos',
+      icon: '📊',
+      grupo: 'riesgos-limites@banco.demo',
+      kbFolder: 'riesgos-limites',
+      kbDocs: 16,
+      members: [
+        { name: 'Paula Núñez', email: 'paula.nunez@banco.demo' },
+        { name: 'Andrés Vega', email: 'andres.vega@banco.demo' },
+        { name: 'Clara Ibáñez', email: 'clara.ibanez@banco.demo' }
+      ],
+      kbSuggestions: [
+        '¿Qué hago ante un exceso de límite?',
+        '¿A qué hora corre el batch de VaR?',
+        '¿Cómo se recalcula el CVA?'
+      ],
+      kb: [
+        {
+          keywords: ['var', 'escenario', 'estres', 'batch', 'nocturno', 'sensibilidad'],
+          answer:
+            'El **batch de VaR** (99%, horizonte 1 día) corre a las 2:00:\n\n' +
+            '- 500 escenarios históricos + 40 de estrés definidos por el comité.\n' +
+            '- Si el batch supera las 5:00, se activa el protocolo de contingencia (VaR aproximado).\n' +
+            '- Las sensibilidades por mesa se publican en el informe de las 8:00.',
+          sources: [
+            'kb/riesgos-limites/var.md',
+            'kb/riesgos-limites/escenarios.md'
+          ]
+        },
+        {
+          keywords: ['limite', 'exceso', 'contraparte', 'intradia', 'justificar'],
+          answer:
+            'Ante un **exceso de límite** el circuito es:\n\n' +
+            '- El monitor lo marca en ámbar (intradía) o rojo (cierre).\n' +
+            '- La mesa tiene **2 horas** para justificarlo o deshacer la posición.\n' +
+            '- Riesgos valida la justificación y deja constancia en la herramienta de límites.',
+          sources: [
+            'kb/riesgos-limites/limites.md',
+            'kb/riesgos-limites/procedimiento-excesos.md'
+          ]
+        },
+        {
+          keywords: ['cva', 'xva', 'ajuste', 'valoracion', 'contrapartida', 'descuento'],
+          answer:
+            'El **CVA** se recalcula en dos momentos:\n\n' +
+            '- Nocturno completo con la curva de crédito de cierre.\n' +
+            '- Intradía bajo demanda para operaciones nuevas de importe relevante.\n' +
+            '- Los spreads de crédito se toman del feed oficial; sin cotización, se aplica el *proxy* sectorial.',
+          sources: ['kb/riesgos-limites/xva.md']
+        }
+      ],
+      kbFallbackSources: [
+        'kb/riesgos-limites/indice.md',
+        'kb/riesgos-limites/metodologia.md'
+      ]
+    },
+    {
+      id: 'back-office',
+      nombre: 'Back Office y Conciliación',
+      corto: 'Back Office',
+      icon: '🧾',
+      grupo: 'bo-conciliacion@banco.demo',
+      kbFolder: 'back-office',
       kbDocs: 9,
       members: [
-        { name: 'Marta Sanz', email: 'marta.sanz@equipo.demo' },
-        { name: 'David Gil', email: 'david.gil@equipo.demo' }
+        { name: 'Sergio Lara', email: 'sergio.lara@banco.demo' },
+        { name: 'Eva Duarte', email: 'eva.duarte@banco.demo' }
       ],
       kbSuggestions: [
-        '¿Cómo lanzo la suite E2E?',
-        '¿Dónde están los dashboards de métricas?',
-        '¿Cómo reporto un bug?'
+        '¿Cómo reclamo una confirmación sin casar?',
+        '¿Qué hago con un descuadre en nostros?',
+        '¿Cuáles son las ventanas de liquidación?'
       ],
       kb: [
         {
-          keywords: ['e2e', 'suite', 'playwright', 'automatiza', 'lanzar', 'ejecutar'],
+          keywords: ['confirmacion', 'mt300', 'casar', 'matching', 'contrapartida', 'reclamar'],
           answer:
-            'La suite E2E se lanza con `npm run e2e` (Playwright):\n\n' +
-            '- En local usa `--ui` para el modo interactivo.\n' +
-            '- En CI corre cada noche contra *staging*; el informe queda en el job.\n' +
-            '- Marca tests inestables con `@flaky` y abre incidencia.',
+            'Confirmaciones **sin casar** (MT300/MT320):\n\n' +
+            '- El matching automático reintenta cada 30 min hasta el cutoff.\n' +
+            '- Pasadas 4 horas, se reclama a la contrapartida por el canal acordado (plantilla oficial).\n' +
+            '- Si la discrepancia es económica, se escala a Front Office antes de tocar nada.',
           sources: [
-            'kb/equipo-qa-datos/e2e.md',
-            'kb/equipo-qa-datos/runbooks/playwright.md'
+            'kb/back-office/confirmaciones.md',
+            'kb/back-office/runbooks/mt300.md'
           ]
         },
         {
-          keywords: ['dashboard', 'looker', 'metrica', 'kpi', 'informe', 'datos'],
+          keywords: ['conciliacion', 'nostro', 'descuadre', 'apunte', 'cuadre'],
           answer:
-            'Los dashboards viven en **Looker Studio**:\n\n' +
-            '- «Calidad releases» → métricas de bugs por versión.\n' +
-            '- «Salud E2E» → estabilidad de la suite por día.\n' +
-            '- Los orígenes de datos se documentan en la carpeta `datos/`.',
-          sources: ['kb/equipo-qa-datos/dashboards.md']
+            'La **conciliación de nostros** corre a las 8:00 con los extractos MT940/camt.053:\n\n' +
+            '- Los descuadres van a la cola de investigación con antigüedad y responsable.\n' +
+            '- Apuntes < 50 € (comisiones) se regularizan en el día con la cuenta puente.\n' +
+            '- Todo descuadre > 5 días se reporta al responsable del área.',
+          sources: ['kb/back-office/conciliacion.md']
         },
         {
-          keywords: ['bug', 'incidencia', 'reporte', 'reportar', 'defecto', 'plantilla'],
+          keywords: ['liquidacion', 'target2', 'ventana', 'settlement', 'cutoff'],
           answer:
-            'Para reportar un bug usa la **plantilla oficial**:\n\n' +
-            '- Título con el patrón `[área] resumen`.\n' +
-            '- Pasos de reproducción + resultado esperado vs. real.\n' +
-            '- Adjunta evidencia (captura o traza) y etiqueta la severidad.',
+            'Ventanas de **liquidación** habituales:\n\n' +
+            '- TARGET2: hasta las 17:00 CET para pagos de cliente, 18:00 interbancario.\n' +
+            '- Divisas vía CLS: cutoff interno 15:30 CET.\n' +
+            '- Fuera de ventana, se necesita aprobación del responsable de Tesorería (procedimiento de excepción).',
           sources: [
-            'kb/equipo-qa-datos/plantilla-bugs.md',
-            'kb/equipo-qa-datos/severidades.md'
+            'kb/back-office/liquidacion.md',
+            'kb/back-office/runbooks/excepciones.md'
           ]
         }
       ],
       kbFallbackSources: [
-        'kb/equipo-qa-datos/indice.md',
-        'kb/equipo-qa-datos/faq.md'
+        'kb/back-office/indice.md',
+        'kb/back-office/faq.md'
       ]
     }
   ];
@@ -327,81 +392,87 @@
     return TEAMS.find(function (t) { return t.id === id; }) || TEAMS[0];
   }
 
+  /** Nº de documentos visibles en la versión reducida de una KB ajena. */
+  function reducedDocs(team) {
+    return Math.max(3, Math.round(team.kbDocs / 3));
+  }
+
   // ═══════════════════════════════════════════════════════ MOCK BACKEND ═══
-  //  Un "almacén" por equipo: chat (Google Group), formaciones (Calendar +
-  //  Sheets) y respuestas de la Knowledge Base (Copilot + ruta local).
+  //  Simula la Web App de Apps Script: chats por equipo (Google Groups),
+  //  formaciones GLOBALES del área (Calendar + Sheets con columna Equipo),
+  //  el equipo del usuario (hoja "Usuarios") y la Knowledge Base.
   // ═══════════════════════════════════════════════════════════════════════
 
   const MockBackend = (function () {
     const MIN = 60 * 1000;
     const now = Date.now();
 
+    /**
+     * Equipo de la usuaria según la hoja "Usuarios" del backend.
+     * En real: doGet?action=getUserInfo&email=… lo resuelve Apps Script.
+     */
+    const MOCK_USER_TEAM = 'front-office';
+
     const REPLIES = [
       '¡Buena idea, {name}! 💡',
       'Visto 👍',
-      'Genial, lo comentamos en la daily 🙌',
+      'Lo comentamos en la daily 🙌',
       '+1',
-      'Perfecto, gracias por avisar 🙏',
-      'Ok! Me lo apunto 📝'
+      'Gracias por avisar 🙏',
+      'Ok, me lo apunto 📝'
     ];
 
-    /** Semillas de chat, mensajes programados y formaciones por equipo. */
-    function createStore(team) {
+    /** Chat inicial y mensajes programados por equipo. */
+    function createChatStore(team) {
       const m = team.members;
       let messages = [];
       let scheduled = [];
-      let formaciones = [];
 
-      if (team.id === 'frontend') {
+      if (team.id === 'front-office') {
         messages = [
-          { sender: m[0], text: '¡Buenos días equipo! ☕', date: now - 130 * MIN },
-          { sender: m[1], text: 'Buenas! Acabo de subir la rama con el fix del login, ¿alguien me hace review? 🙏', date: now - 118 * MIN },
-          { sender: m[2], text: 'Yo le echo un vistazo después de la daily 👍', date: now - 115 * MIN },
-          { system: true, text: '📅 Nueva formación publicada: «Introducción a Google Apps Script»', date: now - 62 * MIN },
-          { sender: m[0], text: 'Recordad rellenar la hoja de horas antes del viernes 🙏', date: now - 24 * MIN }
+          { sender: m[0], text: 'Buenos días! El EOD de Murex acabó a las 6:12, sin errores en curvas 📈', date: now - 135 * MIN },
+          { sender: m[1], text: 'He subido el parche del pricer de swaps a UAT, ¿alguien lo valida con la mesa?', date: now - 120 * MIN },
+          { sender: m[2], text: 'Lo pruebo con las operaciones de test de la mesa de divisa 👍', date: now - 117 * MIN },
+          { system: true, text: '📅 Nueva formación publicada: «Curvas y pricing en Murex»', date: now - 65 * MIN },
+          { sender: m[0], text: 'Recordad: viernes es cierre de mes, congelamos cambios en producción 🙏', date: now - 22 * MIN }
         ];
         scheduled = [
-          { at: now + 9000, sender: m[1], text: '¿Habéis visto el nuevo panel del Team Hub en VS Code? 👀' },
-          { at: now + 26000, sender: m[2], text: '¡Sí! Queda genial integrado con el tema del editor 🔥' },
-          { at: now + 75000, sender: m[0], text: 'Recordad que mañana tenemos demo con cliente a las 12:00.' }
+          { at: now + 9000, sender: m[1], text: 'La mesa reporta lentitud en el blotter de FX, ¿lo estáis viendo?' },
+          { at: now + 27000, sender: m[2], text: 'Reinicio el servicio de market data en pre y os cuento 🔧' },
+          { at: now + 70000, sender: m[0], text: 'Mañana 12:00 comité de cambios: llevad preparados vuestros pases.' }
         ];
-        formaciones = [
-          { titulo: 'Introducción a Google Apps Script', fecha: futureDate(2, 10, 0), descripcion: 'Primeros pasos con GAS: doGet/doPost, servicios de Workspace (Sheets, Calendar, Gmail) y despliegue de Web Apps.', creador: m[0].name, asistentes: 6 },
-          { titulo: 'Testing en TypeScript con Vitest', fecha: futureDate(5, 16, 0), descripcion: 'Escribir tests unitarios rápidos, mocking de módulos y cobertura aplicada a nuestros proyectos.', creador: m[1].name, asistentes: 3 },
-          { titulo: 'Accesibilidad web (WCAG 2.2)', fecha: futureDate(9, 12, 30), descripcion: 'Repaso práctico de los criterios AA: foco visible, contraste, navegación por teclado y lectores de pantalla.', creador: m[2].name, asistentes: 8 }
-        ];
-      } else if (team.id === 'backend') {
+      } else if (team.id === 'liquidez') {
         messages = [
-          { sender: m[1], text: 'He dejado la migración 042 lista en la rama, revisadla antes del deploy de esta tarde 🚀', date: now - 95 * MIN },
-          { sender: m[0], text: 'Le echo un ojo ahora. ¿Toca también al índice de pedidos?', date: now - 88 * MIN },
-          { sender: m[1], text: 'Sí, añade uno parcial para las consultas del listado.', date: now - 86 * MIN },
-          { system: true, text: '📅 Nueva formación publicada: «Optimización de consultas en PostgreSQL»', date: now - 50 * MIN },
-          { sender: m[2], text: 'El canary del servicio de pagos lleva 20 min estable, promociono al 100% ✅', date: now - 12 * MIN }
+          { sender: m[0], text: 'El forecast de liquidez de hoy ya está cargado en el dashboard ✅', date: now - 100 * MIN },
+          { sender: m[1], text: 'Ojo: TARGET2 publica ventana de mantenimiento este sábado.', date: now - 90 * MIN },
+          { system: true, text: '📅 Nueva formación publicada: «Pagos SWIFT MX (ISO 20022)»', date: now - 55 * MIN },
+          { sender: m[0], text: 'Quedan 3 pagos retenidos en la cola de sanciones, los estoy revisando con Cumplimiento.', date: now - 15 * MIN }
         ];
         scheduled = [
-          { at: now + 15000, sender: m[0], text: 'Migración revisada, aprobada ✔️' },
-          { at: now + 48000, sender: m[2], text: 'Ojo: mañana rotamos las credenciales de la BD de staging.' }
+          { at: now + 14000, sender: m[1], text: 'Barrido de nostros de las 11:30 completado, sin descuadres 🎉' },
+          { at: now + 52000, sender: m[0], text: '¿Podéis validar el fichero de previsión de la sucursal de Londres?' }
         ];
-        formaciones = [
-          { titulo: 'Optimización de consultas en PostgreSQL', fecha: futureDate(3, 11, 0), descripcion: 'EXPLAIN ANALYZE, índices parciales, particionado y trampas habituales en consultas N+1.', creador: m[0].name, asistentes: 4 },
-          { titulo: 'Mensajería con Pub/Sub', fecha: futureDate(7, 15, 30), descripcion: 'Patrones de publicación/suscripción, reintentos, dead-letter queues e idempotencia.', creador: m[1].name, asistentes: 5 }
+      } else if (team.id === 'riesgos') {
+        messages = [
+          { sender: m[0], text: 'El batch de VaR tardó 40 min más esta noche por los escenarios nuevos.', date: now - 110 * MIN },
+          { sender: m[1], text: 'Hay un exceso intradía en una contraparte, la mesa ya está avisada.', date: now - 95 * MIN },
+          { sender: m[2], text: 'Subo el informe de sensibilidades para el comité de riesgos 📊', date: now - 80 * MIN },
+          { system: true, text: '📅 Nueva formación publicada: «Límites de contraparte e intradía»', date: now - 48 * MIN }
+        ];
+        scheduled = [
+          { at: now + 18000, sender: m[0], text: 'CVA recalculado con la curva nueva: diferencias mínimas ✔️' },
+          { at: now + 60000, sender: m[1], text: 'Recordad revisar los excesos pendientes de justificar antes del cierre.' }
         ];
       } else {
         messages = [
-          { sender: m[0], text: 'La suite E2E ha pasado en verde esta noche ✅ 214/214', date: now - 110 * MIN },
-          { sender: m[1], text: '¡Bien! ¿Cerramos entonces la incidencia del checkout?', date: now - 104 * MIN },
-          { sender: m[0], text: 'Sí, la cierro y actualizo el dashboard de calidad.', date: now - 102 * MIN },
-          { system: true, text: '📅 Nueva formación publicada: «Automatización E2E con Playwright»', date: now - 70 * MIN },
-          { sender: m[1], text: 'He subido el informe semanal de métricas al Drive del equipo 📊', date: now - 18 * MIN }
+          { sender: m[0], text: 'Quedan 2 confirmaciones MT300 de ayer sin casar, reclamadas a la contrapartida.', date: now - 105 * MIN },
+          { sender: m[1], text: 'La conciliación de nostros cuadra salvo un apunte de 12,50 € (comisión) 🔍', date: now - 92 * MIN },
+          { system: true, text: '📅 Nueva formación publicada: «Conciliación de cuentas nostro»', date: now - 60 * MIN },
+          { sender: m[0], text: 'Migración a MX: el viernes probamos los semt.017 en el entorno de pruebas.', date: now - 20 * MIN }
         ];
         scheduled = [
-          { at: now + 20000, sender: m[0], text: 'Recordatorio: el corte de datos del informe mensual es el jueves.' },
-          { at: now + 60000, sender: m[1], text: '¿Alguien más ve lento el entorno de staging? 🐢' }
-        ];
-        formaciones = [
-          { titulo: 'Automatización E2E con Playwright', fecha: futureDate(2, 12, 0), descripcion: 'Selectores robustos, fixtures, paralelización y cómo mantener la suite estable en CI.', creador: m[0].name, asistentes: 7 },
-          { titulo: 'Dashboards con Looker Studio', fecha: futureDate(6, 10, 30), descripcion: 'Conectar orígenes, métricas calculadas y buenas prácticas de visualización para el equipo.', creador: m[1].name, asistentes: 2 },
-          { titulo: 'Calidad de datos con Great Expectations', fecha: futureDate(11, 16, 0), descripcion: 'Validaciones automáticas de esquemas y datos en los pipelines de ingesta.', creador: m[0].name, asistentes: 3 }
+          { at: now + 16000, sender: m[1], text: 'Liquidación de la ventana TARGET2 completada sin incidencias ✅' },
+          { at: now + 58000, sender: m[0], text: '¿Alguien me pasa el manual del matching de confirmaciones?' }
         ];
       }
 
@@ -412,16 +483,31 @@
             : { id: uid(), sender: msg.sender.name, email: msg.sender.email, text: msg.text, date: msg.date };
         }),
         scheduled: scheduled,
-        replyIndex: 0,
-        formaciones: formaciones.map(function (f) {
-          return Object.assign({ id: uid(), apuntado: false }, f);
-        })
+        replyIndex: 0
       };
     }
 
-    const stores = {};
+    const chatStores = {};
     TEAMS.forEach(function (team) {
-      stores[team.id] = createStore(team);
+      chatStores[team.id] = createChatStore(team);
+    });
+
+    /**
+     * Formaciones GLOBALES del área de Tesorería.
+     * Cada una pertenece al equipo que la organiza (columna "Equipo" en la
+     * hoja de cálculo del backend real).
+     */
+    const formaciones = [
+      { teamId: 'front-office', titulo: 'Curvas y pricing en Murex', fecha: futureDate(2, 10, 0), descripcion: 'Generadores de curva, descuento OIS y validación de la valoración oficial frente a la mesa.', creador: 'Lucía Ferrer', asistentes: 9 },
+      { teamId: 'liquidez', titulo: 'Pagos SWIFT MX (ISO 20022)', fecha: futureDate(3, 12, 0), descripcion: 'De MT a MX: pacs.008, pacs.002 y cómo leer los códigos de rechazo del nuevo esquema.', creador: 'Óscar Molina', asistentes: 12 },
+      { teamId: 'riesgos', titulo: 'VaR y escenarios de estrés', fecha: futureDate(4, 16, 0), descripcion: 'Cómo se calcula el VaR del área, qué escenarios usamos y cómo interpretar el informe diario.', creador: 'Paula Núñez', asistentes: 7 },
+      { teamId: 'back-office', titulo: 'Conciliación de cuentas nostro', fecha: futureDate(5, 9, 30), descripcion: 'Extractos MT940/camt.053, cola de investigación y regularización de apuntes menores.', creador: 'Eva Duarte', asistentes: 3 },
+      { teamId: 'riesgos', titulo: 'Límites de contraparte e intradía', fecha: futureDate(7, 12, 30), descripcion: 'Circuito de excesos, justificación por la mesa y registro en la herramienta de límites.', creador: 'Andrés Vega', asistentes: 6 },
+      { teamId: 'front-office', titulo: 'Introducción al módulo de colateral', fecha: futureDate(8, 10, 0), descripcion: 'CSAs, llamadas de margen y cómo se refleja el colateral en la posición de tesorería.', creador: 'Marcos Peña', asistentes: 4 },
+      { teamId: 'liquidez', titulo: 'Forecast de liquidez intradía', fecha: futureDate(10, 11, 0), descripcion: 'Fuentes del forecast, buffer regulatorio y lectura del dashboard de liquidez.', creador: 'Nuria Campos', asistentes: 5 },
+      { teamId: 'back-office', titulo: 'Confirmaciones: de MT a MX', fecha: futureDate(12, 16, 0), descripcion: 'Calendario de migración a ISO 20022 en confirmaciones y qué cambia en el matching.', creador: 'Sergio Lara', asistentes: 8 }
+    ].map(function (f) {
+      return Object.assign({ id: uid(), apuntado: false }, f);
     });
 
     function flushScheduled(store) {
@@ -471,7 +557,7 @@
       }
       return {
         answer:
-          'No he encontrado una respuesta exacta en la Knowledge Base del ' +
+          'No he encontrado una respuesta exacta en la Knowledge Base de ' +
           '**' + team.nombre + '**, pero estos documentos pueden ayudarte:\n\n' +
           '- `' + team.kbFallbackSources[0] + '` — mapa de toda la documentación\n' +
           '- `' + team.kbFallbackSources[1] + '` — preguntas frecuentes\n\n' +
@@ -481,14 +567,19 @@
     }
 
     return {
+      /** Equipo del usuario (en real: hoja "Usuarios" vía getUserInfo). */
+      getUserInfo: function () {
+        return { ok: true, team: MOCK_USER_TEAM };
+      },
+
       getChat: function (teamId) {
-        const store = stores[teamId];
+        const store = chatStores[teamId];
         flushScheduled(store);
         return { ok: true, messages: store.messages.slice(), typing: typingNow(store) };
       },
 
       sendMessage: function (teamId, payload) {
-        const store = stores[teamId];
+        const store = chatStores[teamId];
         const team = teamById(teamId);
         store.messages.push({
           id: uid(),
@@ -500,25 +591,28 @@
         const teammate = team.members[rand(0, team.members.length)];
         const template = REPLIES[store.replyIndex % REPLIES.length];
         store.replyIndex += 1;
+        // En el chat de otro equipo la respuesta tarda bastante más
+        // (están a lo suyo): refuerza el aviso de paciencia.
+        const foreign = teamId !== MOCK_USER_TEAM;
         store.scheduled.push({
-          at: Date.now() + rand(2800, 5200),
+          at: Date.now() + (foreign ? rand(9000, 16000) : rand(2800, 5200)),
           sender: teammate,
           text: template.replace('{name}', USER.name.split(' ')[0])
         });
         return { ok: true };
       },
 
-      getFormaciones: function (teamId) {
-        const list = stores[teamId].formaciones.slice().sort(function (a, b) {
+      getFormaciones: function () {
+        const list = formaciones.slice().sort(function (a, b) {
           return new Date(a.fecha) - new Date(b.fecha);
         });
         return { ok: true, formaciones: list };
       },
 
       createFormacion: function (teamId, payload) {
-        const store = stores[teamId];
         const nueva = {
           id: uid(),
+          teamId: teamId,
           titulo: payload.titulo,
           fecha: payload.fecha,
           descripcion: payload.descripcion || '',
@@ -526,8 +620,8 @@
           asistentes: 1,
           apuntado: true
         };
-        store.formaciones.push(nueva);
-        store.messages.push({
+        formaciones.push(nueva);
+        chatStores[teamId].messages.push({
           id: uid(),
           system: true,
           text: '📅 Nueva formación publicada: «' + payload.titulo + '»',
@@ -536,16 +630,15 @@
         return { ok: true, formacion: nueva };
       },
 
-      rsvp: function (teamId, payload) {
-        const store = stores[teamId];
-        const item = store.formaciones.find(function (f) { return f.id === payload.id; });
+      rsvp: function (payload) {
+        const item = formaciones.find(function (f) { return f.id === payload.id; });
         if (!item) {
           return { ok: false, error: 'Formación no encontrada' };
         }
         if (!item.apuntado) {
           item.apuntado = true;
           item.asistentes += 1;
-          store.messages.push({
+          chatStores[item.teamId].messages.push({
             id: uid(),
             system: true,
             text: '✅ ' + USER.name + ' se ha apuntado a «' + item.titulo + '»',
@@ -566,9 +659,9 @@
   // ─────────────────────────────────────────────────────────── Capa de API ──
 
   /**
-   * Punto único de acceso a datos. Todas las acciones llevan el equipo
-   * activo. En modo real, el POST va como text/plain para evitar el
-   * preflight CORS (Apps Script no lo soporta).
+   * Punto único de acceso a datos. Las acciones de chat/KB llevan el
+   * equipo activo; las formaciones son globales del área. En modo real,
+   * el POST va como text/plain para evitar el preflight CORS.
    */
   async function api(action, payload) {
     const teamId = state.currentTeamId;
@@ -576,16 +669,18 @@
     if (MOCK_MODE) {
       await delay(rand(200, 550));
       switch (action) {
+        case 'getUserInfo':
+          return MockBackend.getUserInfo();
         case 'getChat':
           return MockBackend.getChat(teamId);
         case 'sendMessage':
           return MockBackend.sendMessage(teamId, payload);
         case 'getFormaciones':
-          return MockBackend.getFormaciones(teamId);
+          return MockBackend.getFormaciones();
         case 'createFormacion':
           return MockBackend.createFormacion(teamId, payload);
         case 'rsvp':
-          return MockBackend.rsvp(teamId, payload);
+          return MockBackend.rsvp(payload);
         case 'kbAsk':
           // En modo real esta acción NO va a Apps Script: usará la
           // Language Model API (Copilot) desde la extensión.
@@ -619,28 +714,43 @@
   // ─────────────────────────────────────────────────────── Estado de la UI ──
 
   const state = {
+    /** Equipo al que pertenece la usuaria (lo indica el backend). */
+    userTeamId: null,
     currentTeamId: TEAMS[0].id,
     messages: [],
     formaciones: [],
+    /** Filtro del panel de formaciones: 'all' | 'team'. */
+    formFilter: 'all',
     sending: false,
     kbBusy: false,
     /** Historial de la Knowledge Base por equipo. */
     kbHistories: {}
   };
 
+  function isForeign(teamId) {
+    return state.userTeamId !== null && teamId !== state.userTeamId;
+  }
+
   function kbHistory(teamId) {
     if (!state.kbHistories[teamId]) {
       const team = teamById(teamId);
+      const foreign = isForeign(teamId);
+      const text = foreign
+        ? 'Estás consultando la **versión reducida** de la Knowledge Base de ' +
+          '**' + team.nombre + '** (' + reducedDocs(team) + ' de ' + team.kbDocs +
+          ' documentos). Puede contener errores o información desactualizada.\n\n' +
+          'Si no resuelvo tu duda, pregunta en su chat — con paciencia 🙂.'
+        : '¡Hola! Soy **Copilot** conectado a la Knowledge Base de tu equipo, ' +
+          '**' + team.nombre + '** (`' + KB_BASE_PATH + '/' + team.kbFolder +
+          '`, ' + team.kbDocs + ' documentos indexados — simulado).\n\n' +
+          'Pregúntame lo que necesites: citaré las fuentes de cada respuesta.';
       state.kbHistories[teamId] = [
         {
           id: uid(),
           role: 'assistant',
-          text:
-            '¡Hola! Soy **Copilot** conectado a la Knowledge Base del ' +
-            '**' + team.nombre + '** (`' + KB_BASE_PATH + '/' + team.kbFolder +
-            '`, ' + team.kbDocs + ' documentos indexados — simulado).\n\n' +
-            'Pregúntame lo que necesites: citaré las fuentes de cada respuesta.',
+          text: text,
           sources: [],
+          reduced: foreign,
           date: Date.now()
         }
       ];
@@ -744,16 +854,26 @@
 
   function renderFormaciones() {
     const wrap = $('cardsList');
+    const filtered =
+      state.formFilter === 'team'
+        ? state.formaciones.filter(function (f) {
+            return f.teamId === state.currentTeamId;
+          })
+        : state.formaciones;
 
-    if (!state.formaciones.length) {
+    if (!filtered.length) {
       wrap.innerHTML =
         '<div class="empty"><span class="empty-icon">🗓️</span>' +
-        'No hay formaciones próximas.<br>¡Crea la primera!</div>';
+        (state.formFilter === 'team'
+          ? 'Este equipo aún no ha montado formaciones próximas.'
+          : 'No hay formaciones próximas en el área.') +
+        '</div>';
       return;
     }
 
     let html = '';
-    state.formaciones.forEach(function (f) {
+    filtered.forEach(function (f) {
+      const team = teamById(f.teamId);
       const d = new Date(f.fecha);
       const day = d.getDate();
       const month = d.toLocaleDateString('es-ES', { month: 'short' })
@@ -774,6 +894,9 @@
           '<p class="card-desc">' + escapeHtml(f.descripcion) + '</p>';
       }
       html += '<div class="card-meta">';
+      html +=
+        '<span class="pill team">' + team.icon + ' ' +
+        escapeHtml(team.corto) + '</span>';
       html += '<span>🕐 ' + hora + '</span>';
       html += '<span>👤 ' + escapeHtml(f.creador) + '</span>';
       html +=
@@ -801,6 +924,18 @@
     });
   }
 
+  function setFormFilter(filter) {
+    state.formFilter = filter;
+    const team = teamById(state.currentTeamId);
+    $('filtAll').classList.toggle('active', filter === 'all');
+    $('filtTeam').classList.toggle('active', filter === 'team');
+    $('formTeamLabel').textContent =
+      filter === 'team'
+        ? 'organizadas por ' + team.corto
+        : 'todos los equipos del área';
+    renderFormaciones();
+  }
+
   // ─────────────────────────────────────────────── Render: Knowledge Base ──
 
   /** Crea el nodo DOM de un mensaje de la KB y lo añade a la lista. */
@@ -817,16 +952,21 @@
         escapeHtml(msg.text) +
         '<span class="time">' + fmtTime(msg.date) + '</span></div></div>';
     } else {
-      node.className = 'kb-answer';
+      node.className = 'kb-answer' + (msg.reduced ? ' reduced' : '');
       node.innerHTML =
         '<div class="kb-head"><span class="kb-bot">🤖</span> Copilot · Knowledge Base' +
+        (msg.reduced ? ' <span class="kb-flag">reducida</span>' : '') +
         '<span class="kb-time">' + fmtTime(msg.date) + '</span></div>' +
         '<div class="kb-body">' +
         (msg.streaming
           ? escapeHtml(msg.text) + '<span class="caret"></span>'
           : mdLite(msg.text)) +
         '</div>' +
-        '<div class="kb-sources"></div>';
+        '<div class="kb-sources"></div>' +
+        (msg.reduced && !msg.streaming && msg.sources && msg.sources.length
+          ? '<div class="kb-caveat">⚠️ Respuesta generada desde la versión ' +
+            'reducida de la KB de otro equipo: verifícala con sus propietarios.</div>'
+          : '');
       fillKbSources(node, msg);
     }
 
@@ -892,6 +1032,7 @@
     if (!q || state.kbBusy) return;
 
     const teamId = state.currentTeamId;
+    const foreign = isForeign(teamId);
     const history = kbHistory(teamId);
     state.kbBusy = true;
     $('kbText').value = '';
@@ -902,12 +1043,12 @@
       appendKbMessage(history[history.length - 1]);
     }
 
-    // Mensaje del asistente en modo streaming.
     const answerMsg = {
       id: uid(),
       role: 'assistant',
       text: '',
       sources: [],
+      reduced: foreign,
       streaming: true,
       date: Date.now()
     };
@@ -916,7 +1057,6 @@
       teamId === state.currentTeamId ? appendKbMessage(answerMsg) : null;
 
     try {
-      // Latencia de "búsqueda en la KB + Copilot".
       const data = await api('kbAsk', { question: q });
       const full = data.answer || 'No he podido generar una respuesta.';
 
@@ -983,10 +1123,8 @@
   }
 
   async function refreshFormaciones() {
-    const teamId = state.currentTeamId;
     try {
       const data = await api('getFormaciones');
-      if (teamId !== state.currentTeamId) return;
       if (data && data.ok) {
         state.formaciones = data.formaciones;
         renderFormaciones();
@@ -1102,9 +1240,11 @@
   function initTeamSelect() {
     const select = $('teamSelect');
     select.innerHTML = TEAMS.map(function (team) {
+      const own = team.id === state.userTeamId;
       return (
         '<option value="' + team.id + '">' +
         team.icon + ' ' + escapeHtml(team.nombre) +
+        (own ? ' — tu equipo' : '') +
         '</option>'
       );
     }).join('');
@@ -1114,29 +1254,39 @@
     });
   }
 
+  /** Aplica cabeceras, avisos y textos contextuales del equipo activo. */
+  function applyTeamContext() {
+    const team = teamById(state.currentTeamId);
+    const foreign = isForeign(state.currentTeamId);
+
+    $('chatGroupEmail').textContent = team.grupo;
+    $('kbPath').textContent = '📁 ' + KB_BASE_PATH + '/' + team.kbFolder;
+    $('kbDocs').textContent = foreign
+      ? '📄 ' + reducedDocs(team) + ' de ' + team.kbDocs + ' docs (reducida)'
+      : '📄 ' + team.kbDocs + ' docs indexados';
+    $('chatText').placeholder =
+      'Mensaje a ' + team.grupo + '…  (Enter para enviar)';
+    $('kbText').placeholder =
+      'Pregunta a la KB de ' + team.corto + '…  (Enter para enviar)';
+    $('filtTeam').textContent = team.icon + ' De ' + team.corto;
+
+    // Avisos al estar en el espacio de OTRO equipo.
+    $('chatWarn').hidden = !foreign;
+    $('kbWarn').hidden = !foreign;
+  }
+
   /** Cambia el equipo activo y repinta chat, KB y formaciones. */
   function switchTeam(teamId) {
     if (teamId === state.currentTeamId) return;
     state.currentTeamId = teamId;
     const team = teamById(teamId);
 
-    // Cabeceras contextuales.
-    $('chatGroupEmail').textContent = team.grupo;
-    $('formTeamLabel').textContent = team.icon + ' ' + team.nombre;
-    $('kbPath').textContent = '📁 ' + KB_BASE_PATH + '/' + team.kbFolder;
-    $('kbDocs').textContent = '📄 ' + team.kbDocs + ' docs indexados';
-    $('chatText').placeholder =
-      'Mensaje a ' + team.grupo + '…  (Enter para enviar)';
-    $('kbText').placeholder =
-      'Pregunta a la KB del ' + team.nombre + '…  (Enter para enviar)';
-
-    // Estado transitorio fuera.
+    applyTeamContext();
     setTyping(null);
     $('syncText').textContent = 'Sincronizando…';
     state.messages = [];
-    state.formaciones = [];
     renderChat();
-    renderFormaciones();
+    setFormFilter(state.formFilter); // re-aplica el filtro con el nuevo equipo
     renderKbAll();
     renderKbSuggestions();
 
@@ -1144,8 +1294,10 @@
       const list = $('chatList');
       list.scrollTop = list.scrollHeight;
     });
-    refreshFormaciones();
-    toast(team.icon + ' Cambiado al ' + team.nombre);
+    toast(
+      team.icon + ' ' + team.nombre +
+      (isForeign(teamId) ? ' (equipo ajeno)' : ' — tu equipo')
+    );
   }
 
   // ──────────────────────────────────────────────────────────── Pestañas ──
@@ -1201,32 +1353,35 @@
 
   // ───────────────────────────────────────────────────────── Arranque ──
 
-  function init() {
-    const team = teamById(state.currentTeamId);
-
-    $('userLine').textContent =
-      'Conectado como ' + USER.name + ' · ' + USER.email;
-    const avatar = $('userAvatar');
-    avatar.textContent = initials(USER.name);
-    avatar.title = USER.name + ' (' + USER.email + ')';
-
+  async function init() {
     if (MOCK_MODE) {
       $('badgeDemo').hidden = false;
       $('demoBanner').hidden = false;
     }
+    $('userLine').textContent = 'Identificando usuario…';
 
-    // Cabeceras del equipo inicial.
-    $('chatGroupEmail').textContent = team.grupo;
-    $('formTeamLabel').textContent = team.icon + ' ' + team.nombre;
-    $('kbPath').textContent = '📁 ' + KB_BASE_PATH + '/' + team.kbFolder;
-    $('kbDocs').textContent = '📄 ' + team.kbDocs + ' docs indexados';
-    $('chatText').placeholder =
-      'Mensaje a ' + team.grupo + '…  (Enter para enviar)';
-    $('kbText').placeholder =
-      'Pregunta a la KB del ' + team.nombre + '…  (Enter para enviar)';
+    // 1) El backend indica el equipo de la usuaria (hoja "Usuarios").
+    try {
+      const info = await api('getUserInfo');
+      state.userTeamId = (info && info.team) || TEAMS[0].id;
+    } catch (err) {
+      state.userTeamId = TEAMS[0].id;
+    }
+    state.currentTeamId = state.userTeamId;
+    const myTeam = teamById(state.userTeamId);
+
+    // 2) Cabecera con identidad + equipo propio.
+    $('userLine').textContent =
+      USER.name + ' · ' + USER.email + '  —  ' +
+      myTeam.icon + ' ' + myTeam.nombre;
+    const avatar = $('userAvatar');
+    avatar.textContent = initials(USER.name);
+    avatar.title = USER.name + ' (' + USER.email + ') · ' + myTeam.nombre;
 
     initTeamSelect();
     initTabs();
+    applyTeamContext();
+    setFormFilter('all');
 
     // Chat.
     $('chatForm').addEventListener('submit', onSendMessage);
@@ -1267,6 +1422,12 @@
       toggleFormNueva(false);
     });
     $('formNueva').addEventListener('submit', onCreateFormacion);
+    $('filtAll').addEventListener('click', function () {
+      setFormFilter('all');
+    });
+    $('filtTeam').addEventListener('click', function () {
+      setFormFilter('team');
+    });
 
     // Carga inicial + polling del chat.
     refreshChat().then(function () {
@@ -1277,5 +1438,7 @@
     setInterval(refreshChat, POLL_INTERVAL_MS);
   }
 
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', function () {
+    init();
+  });
 })();

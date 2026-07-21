@@ -217,6 +217,67 @@ body {
   white-space: nowrap;
 }
 
+/* ── Aviso al entrar en el espacio de otro equipo ── */
+
+.warn-banner {
+  flex: none;
+  margin: 10px 14px 0;
+  padding: 7px 11px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--vscode-foreground);
+  background: var(--vscode-inputValidation-warningBackground, rgba(204, 167, 0, 0.12));
+  border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-charts-yellow, #cca700));
+  animation: msg-in 0.2s ease both;
+}
+
+/* ── Filtro de formaciones (todas / del equipo activo) ── */
+
+.filter-row {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 9px 14px 0;
+}
+
+.filter-chip {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 99px;
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.35));
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s;
+}
+
+.filter-chip:hover {
+  color: var(--vscode-foreground);
+  border-color: var(--vscode-focusBorder);
+}
+
+.filter-chip.active {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border-color: var(--vscode-button-background);
+  font-weight: 600;
+}
+
+.filter-chip:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+/* Pill de equipo organizador en las tarjetas */
+.card-meta .pill.team {
+  background: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.12));
+  color: var(--vscode-foreground);
+  border: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.25));
+}
+
 /* ─────────────────────────────────────────────── Pestañas (Chat / KB) ── */
 
 .tabs {
@@ -510,6 +571,31 @@ body {
   margin-left: auto;
   font-weight: 400;
   opacity: 0.7;
+}
+
+/* Marca «reducida» en respuestas de la KB de otro equipo */
+.kb-flag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 99px;
+  color: var(--vscode-inputValidation-warningBorder, var(--vscode-charts-yellow, #cca700));
+  border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-charts-yellow, #cca700));
+}
+
+.kb-answer.reduced {
+  border-left-color: var(--vscode-charts-yellow, #cca700);
+}
+
+.kb-caveat {
+  margin-top: 9px;
+  padding-top: 7px;
+  border-top: 1px dashed var(--vscode-panel-border, rgba(127, 127, 127, 0.3));
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow, #cca700));
 }
 
 .kb-body {
