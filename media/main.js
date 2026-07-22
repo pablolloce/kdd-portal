@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════════════════════
-   Team Hub · Área de Tesorería — lógica del webview (JS vanilla)
+   KDD Portal · Área de Tesorería — lógica del webview (JS vanilla)
 
    MODO MOCK: mientras MOCK_MODE sea true, todas las llamadas a la "API"
    se resuelven contra un backend simulado en memoria (MockBackend):

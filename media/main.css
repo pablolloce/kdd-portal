@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════════════════════
-   Team Hub — estilos del webview
+   KDD Portal — estilos del webview
    Todo el color sale de las variables CSS nativas de VS Code, de modo que
    el panel se integra con cualquier tema (oscuro, claro, high-contrast).
    ════════════════════════════════════════════════════════════════════════ */
@@ -53,19 +53,11 @@ body {
 }
 
 .brand-logo {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 34px;
   height: 34px;
-  border-radius: 9px;
-  font-size: 16px;
-  color: var(--vscode-button-foreground);
-  background: linear-gradient(
-    135deg,
-    var(--vscode-button-background),
-    var(--vscode-charts-purple, #b180d7)
-  );
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  object-fit: contain;
+  flex: none;
 }
 
 .brand-text h1 {

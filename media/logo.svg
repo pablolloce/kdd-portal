@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 486 600">
+  <!-- Logo KDD Portal: «N» de cinta plegada -->
+  <defs>
+    <linearGradient id="gL" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9c3a47"/>
+      <stop offset="1" stop-color="#ee7245"/>
+    </linearGradient>
+    <linearGradient id="gD" gradientUnits="userSpaceOnUse" x1="140" y1="20" x2="420" y2="560">
+      <stop offset="0" stop-color="#e03a60"/>
+      <stop offset="0.55" stop-color="#8d57c0"/>
+      <stop offset="1" stop-color="#5052cc"/>
+    </linearGradient>
+    <linearGradient id="gR" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2e7ef5"/>
+      <stop offset="1" stop-color="#2b62e0"/>
+    </linearGradient>
+  </defs>
+  <!-- Banda izquierda (detrás) -->
+  <polygon points="5,88 157,2 157,450 5,537" fill="url(#gL)"/>
+  <!-- Banda diagonal -->
+  <polygon points="5,88 157,2 481,511 329,598" fill="url(#gD)"/>
+  <!-- Banda derecha (delante) -->
+  <polygon points="329,150 481,63 481,511 329,598" fill="url(#gR)"/>
+</svg>

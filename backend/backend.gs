@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- *  Team Hub — Backend en Google Apps Script (Web App)
+ *  KDD Portal — Backend en Google Apps Script (Web App)
  * ═══════════════════════════════════════════════════════════════════════════
  *
  *  ⚠️  NOTA: la extensión de VS Code funciona ahora en MODO MOCK y no llama
@@ -60,7 +60,7 @@ var CONFIG = {
   GROUP_EMAIL: 'equipo@googlegroups.com',
 
   /** Prefijo de asunto para distinguir los correos del chat. */
-  CHAT_SUBJECT: '[TeamHub Chat]',
+  CHAT_SUBJECT: '[KDDPortal Chat]',
 
   /** Máximo de hilos/mensajes a devolver en getChat. */
   MAX_CHAT_MESSAGES: 50,
@@ -174,8 +174,8 @@ function sendChatMessage_(name, email, text) {
   MailApp.sendEmail({
     to: CONFIG.GROUP_EMAIL,
     subject: CONFIG.CHAT_SUBJECT + ' ' + name,
-    body: text + '\n\n— ' + name + ' <' + email + '> vía Team Hub',
-    name: 'Team Hub · ' + name
+    body: text + '\n\n— ' + name + ' <' + email + '> vía KDD Portal',
+    name: 'KDD Portal · ' + name
   });
 }
 
@@ -184,7 +184,7 @@ function cleanBody_(body) {
   var text = (body || '').split(/\n--\s*\n/)[0]; // corta la firma "-- "
   text = text.split(/\nEl .+ escribió:\n/)[0];    // corta la cita en respuestas
   text = text.replace(/\n>+.*$/gm, '');           // quita líneas citadas "> "
-  text = text.replace(/— .+ vía Team Hub\s*$/, '');
+  text = text.replace(/— .+ vía KDD Portal\s*$/, '');
   return text.trim().slice(0, 2000);
 }
 
@@ -244,7 +244,7 @@ function createFormacion_(body) {
   // 2) Evento en Calendar (antes que la fila, para guardar su ID).
   var calendar = CalendarApp.getCalendarById(CONFIG.CALENDAR_ID);
   var evento = calendar.createEvent(body.titulo, inicio, fin, {
-    description: (body.descripcion || '') + '\n\nCreado desde Team Hub por ' + body.name
+    description: (body.descripcion || '') + '\n\nCreado desde KDD Portal por ' + body.name
   });
 
   // 1) Registro en Sheets (columna H = equipo organizador).
@@ -261,15 +261,15 @@ function createFormacion_(body) {
   // 3) Aviso al grupo.
   MailApp.sendEmail({
     to: CONFIG.GROUP_EMAIL,
-    subject: '[TeamHub] Nueva formación: ' + body.titulo,
+    subject: '[KDDPortal] Nueva formación: ' + body.titulo,
     body:
       'Se ha publicado una nueva formación:\n\n' +
       '  📚 ' + body.titulo + '\n' +
       '  🗓️ ' + Utilities.formatDate(inicio, Session.getScriptTimeZone(),
         "EEEE d 'de' MMMM, HH:mm") + '\n\n' +
       (body.descripcion || '') + '\n\n' +
-      'Apúntate desde el panel Team Hub de VS Code.',
-    name: 'Team Hub'
+      'Apúntate desde el panel KDD Portal de VS Code.',
+    name: 'KDD Portal'
   });
 
   return {

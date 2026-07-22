@@ -1,11 +1,12 @@
 {
-  "name": "team-hub",
-  "displayName": "Team Hub",
-  "description": "Hub de equipo dentro de VS Code: chat (Google Grupos), formaciones (Calendar + Sheets). Versión DEMO con datos simulados.",
-  "version": "0.3.1",
+  "name": "kdd-portal",
+  "displayName": "KDD Portal",
+  "description": "Portal del área de Tesorería en VS Code: chat por equipo (Google Grupos), formaciones (Calendar + Sheets) y Knowledge Base (Copilot). Versión DEMO con datos simulados.",
+  "version": "0.4.0",
   "publisher": "kdd-demo",
   "private": true,
   "license": "MIT",
+  "icon": "media/icon.png",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -16,9 +17,32 @@
   "contributes": {
     "commands": [
       {
-        "command": "teamHub.open",
-        "title": "Abrir Team Hub",
-        "category": "Team Hub"
+        "command": "kddPortal.open",
+        "title": "Abrir KDD Portal",
+        "category": "KDD Portal"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "kddPortal",
+          "title": "KDD Portal",
+          "icon": "media/logo.svg"
+        }
+      ]
+    },
+    "views": {
+      "kddPortal": [
+        {
+          "id": "kddPortal.home",
+          "name": "Portal"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "kddPortal.home",
+        "contents": "Hub del área de Tesorería: chat de equipos, formaciones y Knowledge Base.\n[Abrir KDD Portal](command:kddPortal.open)\nVersión demo con datos simulados."
       }
     ]
   },

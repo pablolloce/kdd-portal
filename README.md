@@ -1,4 +1,4 @@
-# Team Hub · Área de Tesorería — Extensión de VS Code (versión DEMO)
+# KDD Portal · Área de Tesorería — Extensión de VS Code (versión DEMO)
 
 Hub para los equipos de las aplicaciones tecnológicas del área de Tesorería
 de un banco: **chat por equipo** (Google Grupos), **formaciones del área**
@@ -23,7 +23,10 @@ la incluye compilada):
 1. Abre esta carpeta en VS Code.
 2. Pulsa **F5** con la configuración
    **«Ejecutar extensión (precompilada, sin npm)»**.
-3. En la ventana nueva: `Ctrl+Shift+P` → **«Team Hub: Abrir Team Hub»**.
+3. En la ventana nueva, ábrelo de cualquiera de las dos formas:
+   - Clic en el icono **KDD Portal** (la «N» de colores) de la barra de
+     actividad de la izquierda → botón **«Abrir KDD Portal»**.
+   - `Ctrl+Shift+P` → **«KDD Portal: Abrir KDD Portal»**.
 
 **Vía completa (con npm)** — para modificar el código de `src/`:
 

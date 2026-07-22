@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  Team Hub — Extensión de VS Code
+//  KDD Portal — Extensión de VS Code (área de Tesorería)
 //  ─────────────────────────────────────────────────────────────────────────
 //  VERSIÓN DEMO (MOCK): todo funciona con datos simulados para poder probar
 //  el estilo visual sin cuentas reales de Google ni URLs reales de Apps Script.
@@ -51,15 +51,25 @@ let currentPanel: vscode.WebviewPanel | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
-    vscode.commands.registerCommand('teamHub.open', async () => {
+    vscode.commands.registerCommand('kddPortal.open', async () => {
       const user = await getUserSession();
       if (!user) {
         void vscode.window.showErrorMessage(
-          'Team Hub: no se pudo obtener la sesión de usuario.'
+          'KDD Portal: no se pudo obtener la sesión de usuario.'
         );
         return;
       }
-      openTeamHubPanel(context, user);
+      openPortalPanel(context, user);
+    })
+  );
+
+  // Vista del contenedor de la barra de actividad (icono de la izquierda).
+  // El árbol se registra vacío para que se muestre el contenido de
+  // "viewsWelcome" del package.json, con el botón «Abrir KDD Portal».
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider('kddPortal.home', {
+      getTreeItem: (element: vscode.TreeItem) => element,
+      getChildren: () => []
     })
   );
 }
@@ -97,7 +107,7 @@ async function getUserSession(): Promise<UserInfo | undefined> {
 
 // ──────────────────────────────────────────────────────────────── Webview ──
 
-function openTeamHubPanel(
+function openPortalPanel(
   context: vscode.ExtensionContext,
   user: UserInfo
 ): void {
@@ -108,8 +118,8 @@ function openTeamHubPanel(
   }
 
   const panel = vscode.window.createWebviewPanel(
-    'teamHub',
-    'Team Hub',
+    'kddPortal',
+    'KDD Portal',
     vscode.ViewColumn.One,
     {
       enableScripts: true,
@@ -137,16 +147,16 @@ function openTeamHubPanel(
     (message: { type: string; level?: string; text?: string; path?: string }) => {
       if (message.type === 'notify' && message.text) {
         if (message.level === 'error') {
-          void vscode.window.showErrorMessage(`Team Hub: ${message.text}`);
+          void vscode.window.showErrorMessage(`KDD Portal: ${message.text}`);
         } else {
-          void vscode.window.showInformationMessage(`Team Hub: ${message.text}`);
+          void vscode.window.showInformationMessage(`KDD Portal: ${message.text}`);
         }
       }
       // Clic en una fuente citada por la Knowledge Base.
       // En modo real: vscode.workspace.openTextDocument(rutaLocalKB + path).
       if (message.type === 'openSource' && message.path) {
         void vscode.window.showInformationMessage(
-          `Team Hub (demo): aquí se abriría «${message.path}» desde la ruta local de la Knowledge Base.`
+          `KDD Portal (demo): aquí se abriría «${message.path}» desde la ruta local de la Knowledge Base.`
         );
       }
     },
@@ -176,6 +186,9 @@ function getWebviewContent(
   const scriptUri = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, 'media', 'main.js')
   );
+  const logoUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, 'media', 'logo.svg')
+  );
   const nonce = getNonce();
 
   // Configuración inyectada al webview. El replace evita cerrar la etiqueta
@@ -204,7 +217,7 @@ function getWebviewContent(
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link href="${styleUri}" rel="stylesheet">
-  <title>Team Hub</title>
+  <title>KDD Portal</title>
 </head>
 <body>
   <div class="app">
@@ -212,9 +225,9 @@ function getWebviewContent(
     <!-- ══════════════════ Barra superior ══════════════════ -->
     <header class="topbar">
       <div class="brand">
-        <span class="brand-logo">◆</span>
+        <img class="brand-logo" src="${logoUri}" alt="KDD Portal">
         <div class="brand-text">
-          <h1>Team Hub</h1>
+          <h1>KDD Portal</h1>
           <span class="brand-sub" id="userLine">Conectando…</span>
         </div>
       </div>
