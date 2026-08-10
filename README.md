@@ -54,9 +54,16 @@ y lanza con **«Ejecutar extensión (compilando antes)»** (compila con la tarea
 ```
 ├── src/extension.ts      → Activación, autenticación (mock), WebviewPanel y HTML
 ├── media/main.css        → Estilos (variables CSS nativas de VS Code)
-├── media/main.js         → Lógica del webview + MockBackend (chat, formaciones)
-├── backend/backend.gs    → Backend real de Google Apps Script (para el futuro)
-└── backend/appsscript.json → Manifest de GAS con los scopes OAuth
+├── media/main.js         → Lógica del webview + MockBackend
+├── media/logo.svg        → Logo (cabecera, barra de actividad) + icon.png
+└── backend/              → Backend real de Google Apps Script (un proyecto)
+    ├── router.gs               → doGet/doPost (tabla de acciones)
+    ├── config.gs               → CONFIG + hojas "Config" y "Usuarios" + setup()
+    ├── chat.gs                 → chat ↔ correo del Google Group por equipo
+    ├── formaciones.gs          → Sheets + Calendar + aviso al grupo
+    ├── kb.gs                   → índice/descarga de la KB desde Drive
+    ├── instrucciones-kb-copilot.md → prompt ad-hoc del chat de KB (Copilot)
+    └── appsscript.json         → Manifest de GAS con los scopes OAuth
 ```
 
 ---
