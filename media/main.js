@@ -1,19 +1,21 @@
 /* ════════════════════════════════════════════════════════════════════════
    KDD Portal · Área de Tesorería — lógica del webview (JS vanilla)
 
+   NAVEGACIÓN
+     - Pantalla «menú»: pestañas Equipos (tarjetas) y Calendario de
+       formaciones (mes completo del área, todas las formaciones).
+     - Pantalla «equipo»: ← Menú, Knowledge Base (primera pestaña), Chat
+       del equipo (segunda, protegida por un aviso modal para fomentar el
+       uso previo de la KB) y las formaciones SOLO de ese equipo.
+
    MODO MOCK: mientras MOCK_MODE sea true, todas las llamadas a la "API"
-   se resuelven contra un backend simulado en memoria (MockBackend):
-   equipos de las aplicaciones tecnológicas de Tesorería, compañeros
-   ficticios que escriben en el chat, formaciones del área y una
-   Knowledge Base que imita a Copilot citando documentos de una ruta
-   local. Nada sale de este webview.
+   se resuelven contra un backend simulado en memoria (MockBackend).
+   Nada sale de este webview.
 
    MODO REAL: al poner MOCK_MODE = false…
     - chat/formaciones/usuario → fetch a la Web App de Google Apps Script
       (APPS_SCRIPT_URL, ver backend/backend.gs). La acción getUserInfo
-      devuelve el EQUIPO del usuario (hoja "Usuarios"), que determina su
-      Knowledge Base completa; las KB de otros equipos son la versión
-      reducida.
+      devuelve el EQUIPO del usuario (hoja "Usuarios").
     - Knowledge Base → Language Model API de VS Code (Copilot) con los
       documentos de KB_BASE_PATH/<equipo> como contexto.
    ════════════════════════════════════════════════════════════════════════ */
@@ -130,6 +132,10 @@
     });
   }
 
+  function capitalize(text) {
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
   /** Quita acentos y pasa a minúsculas (para buscar en la KB). */
   function normalize(text) {
     return String(text)
@@ -145,11 +151,17 @@
     return d.toISOString();
   }
 
+  /** Clave de día local AAAA-MM-DD (para el calendario). */
+  function isoDay(date) {
+    const d = new Date(date);
+    return (
+      d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0')
+    );
+  }
+
   // ══════════════════════════════════════ EQUIPOS DEL ÁREA DE TESORERÍA ═══
-  //  Cada equipo mantiene una de las aplicaciones tecnológicas del área:
-  //  su Google Group (chat), sus formaciones y su carpeta de Knowledge
-  //  Base en la ruta local.
-  // ═══════════════════════════════════════════════════════════════════════
 
   const TEAMS = [
     {
@@ -392,16 +404,17 @@
     return TEAMS.find(function (t) { return t.id === id; }) || TEAMS[0];
   }
 
+  /** Clase CSS de color del equipo (punto/acento en calendario y tarjetas). */
+  function teamColorClass(teamId) {
+    return 'tc-' + teamId;
+  }
+
   /** Nº de documentos visibles en la versión reducida de una KB ajena. */
   function reducedDocs(team) {
     return Math.max(3, Math.round(team.kbDocs / 3));
   }
 
   // ═══════════════════════════════════════════════════════ MOCK BACKEND ═══
-  //  Simula la Web App de Apps Script: chats por equipo (Google Groups),
-  //  formaciones GLOBALES del área (Calendar + Sheets con columna Equipo),
-  //  el equipo del usuario (hoja "Usuarios") y la Knowledge Base.
-  // ═══════════════════════════════════════════════════════════════════════
 
   const MockBackend = (function () {
     const MIN = 60 * 1000;
@@ -492,11 +505,7 @@
       chatStores[team.id] = createChatStore(team);
     });
 
-    /**
-     * Formaciones GLOBALES del área de Tesorería.
-     * Cada una pertenece al equipo que la organiza (columna "Equipo" en la
-     * hoja de cálculo del backend real).
-     */
+    /** Formaciones GLOBALES del área (columna "Equipo" en el backend real). */
     const formaciones = [
       { teamId: 'front-office', titulo: 'Curvas y pricing en Murex', fecha: futureDate(2, 10, 0), descripcion: 'Generadores de curva, descuento OIS y validación de la valoración oficial frente a la mesa.', creador: 'Lucía Ferrer', asistentes: 9 },
       { teamId: 'liquidez', titulo: 'Pagos SWIFT MX (ISO 20022)', fecha: futureDate(3, 12, 0), descripcion: 'De MT a MX: pacs.008, pacs.002 y cómo leer los códigos de rechazo del nuevo esquema.', creador: 'Óscar Molina', asistentes: 12 },
@@ -664,7 +673,7 @@
    * el POST va como text/plain para evitar el preflight CORS.
    */
   async function api(action, payload) {
-    const teamId = state.currentTeamId;
+    const teamId = state.currentTeamId || state.userTeamId || TEAMS[0].id;
 
     if (MOCK_MODE) {
       await delay(rand(200, 550));
@@ -678,7 +687,9 @@
         case 'getFormaciones':
           return MockBackend.getFormaciones();
         case 'createFormacion':
-          return MockBackend.createFormacion(teamId, payload);
+          // La formación se crea a nombre del equipo indicado en el payload
+          // (el equipo de la usuaria cuando se crea desde el calendario).
+          return MockBackend.createFormacion(payload.team || teamId, payload);
         case 'rsvp':
           return MockBackend.rsvp(payload);
         case 'kbAsk':
@@ -716,14 +727,24 @@
   const state = {
     /** Equipo al que pertenece la usuaria (lo indica el backend). */
     userTeamId: null,
-    currentTeamId: TEAMS[0].id,
+    /** Equipo abierto (null mientras se está en el menú). */
+    currentTeamId: null,
+    /** 'home' | 'team' */
+    screen: 'home',
+    /** Pestaña del menú: 'teams' | 'calendar'. */
+    homeTab: 'teams',
+    /** Pestaña dentro del equipo: 'kb' | 'chat'. */
+    teamTab: 'kb',
+    /** teamId → true una vez aceptado el aviso del chat. */
+    chatUnlocked: {},
+    /** Mes visible del calendario (Date del día 1). */
+    calMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    /** Día seleccionado del calendario (AAAA-MM-DD). */
+    calSelected: isoDay(new Date()),
     messages: [],
     formaciones: [],
-    /** Filtro del panel de formaciones: 'all' | 'team'. */
-    formFilter: 'all',
     sending: false,
     kbBusy: false,
-    /** Historial de la Knowledge Base por equipo. */
     kbHistories: {}
   };
 
@@ -769,6 +790,221 @@
     toastTimer = setTimeout(function () {
       el.classList.remove('show');
     }, 2600);
+  }
+
+  // ═══════════════════════════════════════════ MENÚ: TARJETAS DE EQUIPO ═══
+
+  function renderTeamsGrid() {
+    const grid = $('teamsGrid');
+    let html = '';
+
+    TEAMS.forEach(function (team) {
+      const own = team.id === state.userTeamId;
+      const proximas = state.formaciones.filter(function (f) {
+        return f.teamId === team.id;
+      }).length;
+
+      html += '<button class="team-card ' + teamColorClass(team.id) +
+        '" type="button" data-id="' + team.id + '">';
+      html += '<span class="team-card-head">';
+      html += '<span class="team-card-icon">' + team.icon + '</span>';
+      if (own) {
+        html += '<span class="team-badge own">Tu equipo</span>';
+      }
+      html += '</span>';
+      html += '<span class="team-card-name">' + escapeHtml(team.nombre) + '</span>';
+      html += '<span class="team-card-group">' + escapeHtml(team.grupo) + '</span>';
+      html += '<span class="team-card-stats">';
+      html += '<span>👥 ' + team.members.length + '</span>';
+      html += '<span>🎓 ' + proximas + ' próxima' + (proximas === 1 ? '' : 's') + '</span>';
+      html += own
+        ? '<span>📄 ' + team.kbDocs + ' docs</span>'
+        : '<span class="warn-text">📄 ' + reducedDocs(team) + '/' + team.kbDocs + ' (reducida)</span>';
+      html += '</span>';
+      html += '<span class="team-card-cta">Entrar →</span>';
+      html += '</button>';
+    });
+
+    grid.innerHTML = html;
+    grid.querySelectorAll('.team-card').forEach(function (card) {
+      card.addEventListener('click', function () {
+        enterTeam(card.getAttribute('data-id'));
+      });
+    });
+  }
+
+  // ═══════════════════════════════════ MENÚ: CALENDARIO DE FORMACIONES ═══
+
+  /** Índice { 'AAAA-MM-DD': [formaciones…] } del estado actual. */
+  function formacionesByDay() {
+    const index = {};
+    state.formaciones.forEach(function (f) {
+      const key = isoDay(f.fecha);
+      (index[key] = index[key] || []).push(f);
+    });
+    return index;
+  }
+
+  function renderCalendar() {
+    const month = state.calMonth;
+    $('calTitle').textContent = capitalize(
+      month.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+    );
+
+    const byDay = formacionesByDay();
+    const todayKey = isoDay(new Date());
+
+    // Lunes anterior (o igual) al día 1 del mes.
+    const first = new Date(month);
+    const offset = (first.getDay() + 6) % 7;
+    first.setDate(first.getDate() - offset);
+
+    let html = '';
+    for (let i = 0; i < 42; i++) {
+      const day = new Date(first);
+      day.setDate(first.getDate() + i);
+      const key = isoDay(day);
+      const inMonth = day.getMonth() === month.getMonth();
+      const items = byDay[key] || [];
+
+      const classes = [
+        'cal-cell',
+        inMonth ? '' : 'other-month',
+        key === todayKey ? 'today' : '',
+        key === state.calSelected ? 'selected' : ''
+      ].join(' ');
+
+      html += '<button class="' + classes + '" type="button" data-date="' + key + '">';
+      html += '<span class="cal-daynum">' + day.getDate() + '</span>';
+      items.slice(0, 2).forEach(function (f) {
+        html +=
+          '<span class="cal-chip"><i class="tdot ' + teamColorClass(f.teamId) +
+          '"></i><span class="cal-chip-text">' + escapeHtml(f.titulo) + '</span></span>';
+      });
+      if (items.length > 2) {
+        html += '<span class="cal-more">+' + (items.length - 2) + ' más</span>';
+      }
+      html += '</button>';
+    }
+
+    $('calGrid').innerHTML = html;
+    $('calGrid').querySelectorAll('.cal-cell').forEach(function (cell) {
+      cell.addEventListener('click', function () {
+        state.calSelected = cell.getAttribute('data-date');
+        renderCalendar();
+        renderCalDetail();
+      });
+    });
+  }
+
+  /** Tarjeta de formación (reutilizada en calendario y pantalla de equipo). */
+  function formacionCardHtml(f, showTeam) {
+    const team = teamById(f.teamId);
+    const d = new Date(f.fecha);
+    const day = d.getDate();
+    const month = d.toLocaleDateString('es-ES', { month: 'short' }).replace('.', '');
+    const hora = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+    let html = '<article class="card" data-id="' + f.id + '">';
+    html +=
+      '<div class="date-block"><span class="day">' + day +
+      '</span><span class="month">' + escapeHtml(month) + '</span></div>';
+    html += '<div class="card-body">';
+    html += '<h3 class="card-title">' + escapeHtml(f.titulo) + '</h3>';
+    if (f.descripcion) {
+      html += '<p class="card-desc">' + escapeHtml(f.descripcion) + '</p>';
+    }
+    html += '<div class="card-meta">';
+    if (showTeam) {
+      html +=
+        '<span class="pill team"><i class="tdot ' + teamColorClass(f.teamId) +
+        '"></i>' + team.icon + ' ' + escapeHtml(team.corto) + '</span>';
+    }
+    html += '<span>🕐 ' + hora + '</span>';
+    html += '<span>👤 ' + escapeHtml(f.creador) + '</span>';
+    html +=
+      '<span class="pill">👥 ' + f.asistentes +
+      (f.asistentes === 1 ? ' asistente' : ' asistentes') + '</span>';
+    html += '</div>';
+    html += '<div class="card-actions">';
+    if (f.apuntado) {
+      html += '<button class="btn joined" type="button" disabled>✓ Apuntado</button>';
+    } else {
+      html +=
+        '<button class="btn primary btn-rsvp" type="button" data-id="' +
+        f.id + '">Apuntarse</button>';
+    }
+    html += '</div></div></article>';
+    return html;
+  }
+
+  function attachRsvpHandlers(container) {
+    container.querySelectorAll('.btn-rsvp').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        onRsvp(btn.getAttribute('data-id'), btn);
+      });
+    });
+  }
+
+  function renderCalDetail() {
+    const wrap = $('calDetail');
+    const items = state.formaciones.filter(function (f) {
+      return isoDay(f.fecha) === state.calSelected;
+    });
+
+    const selectedDate = new Date(state.calSelected + 'T12:00:00');
+    const heading = capitalize(
+      selectedDate.toLocaleDateString('es-ES', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long'
+      })
+    );
+
+    let html = '<h3 class="cal-detail-title">' + escapeHtml(heading) + '</h3>';
+
+    if (items.length) {
+      items.forEach(function (f) {
+        html += formacionCardHtml(f, true);
+      });
+    } else {
+      const upcoming = state.formaciones.slice(0, 3);
+      html += '<p class="cal-empty">No hay formaciones este día.</p>';
+      if (upcoming.length) {
+        html += '<h4 class="cal-detail-sub">Próximas en el área</h4>';
+        upcoming.forEach(function (f) {
+          html += formacionCardHtml(f, true);
+        });
+      }
+    }
+
+    wrap.innerHTML = html;
+    attachRsvpHandlers(wrap);
+  }
+
+  // ══════════════════════════════════ EQUIPO: FORMACIONES DEL EQUIPO ═══
+
+  function renderTeamFormaciones() {
+    const wrap = $('cardsList');
+    const team = teamById(state.currentTeamId);
+    const items = state.formaciones.filter(function (f) {
+      return f.teamId === state.currentTeamId;
+    });
+
+    if (!items.length) {
+      wrap.innerHTML =
+        '<div class="empty"><span class="empty-icon">🗓️</span>' +
+        escapeHtml(team.corto) + ' no tiene formaciones próximas.<br>' +
+        'Consulta el calendario del área desde el menú.</div>';
+      return;
+    }
+
+    let html = '';
+    items.forEach(function (f) {
+      html += formacionCardHtml(f, false);
+    });
+    wrap.innerHTML = html;
+    attachRsvpHandlers(wrap);
   }
 
   // ──────────────────────────────────────────────────────── Render: chat ──
@@ -850,95 +1086,8 @@
     }
   }
 
-  // ────────────────────────────────────────────────── Render: formaciones ──
-
-  function renderFormaciones() {
-    const wrap = $('cardsList');
-    const filtered =
-      state.formFilter === 'team'
-        ? state.formaciones.filter(function (f) {
-            return f.teamId === state.currentTeamId;
-          })
-        : state.formaciones;
-
-    if (!filtered.length) {
-      wrap.innerHTML =
-        '<div class="empty"><span class="empty-icon">🗓️</span>' +
-        (state.formFilter === 'team'
-          ? 'Este equipo aún no ha montado formaciones próximas.'
-          : 'No hay formaciones próximas en el área.') +
-        '</div>';
-      return;
-    }
-
-    let html = '';
-    filtered.forEach(function (f) {
-      const team = teamById(f.teamId);
-      const d = new Date(f.fecha);
-      const day = d.getDate();
-      const month = d.toLocaleDateString('es-ES', { month: 'short' })
-        .replace('.', '');
-      const hora = d.toLocaleTimeString('es-ES', {
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-
-      html += '<article class="card" data-id="' + f.id + '">';
-      html +=
-        '<div class="date-block"><span class="day">' + day +
-        '</span><span class="month">' + escapeHtml(month) + '</span></div>';
-      html += '<div class="card-body">';
-      html += '<h3 class="card-title">' + escapeHtml(f.titulo) + '</h3>';
-      if (f.descripcion) {
-        html +=
-          '<p class="card-desc">' + escapeHtml(f.descripcion) + '</p>';
-      }
-      html += '<div class="card-meta">';
-      html +=
-        '<span class="pill team">' + team.icon + ' ' +
-        escapeHtml(team.corto) + '</span>';
-      html += '<span>🕐 ' + hora + '</span>';
-      html += '<span>👤 ' + escapeHtml(f.creador) + '</span>';
-      html +=
-        '<span class="pill">👥 ' + f.asistentes +
-        (f.asistentes === 1 ? ' asistente' : ' asistentes') + '</span>';
-      html += '</div>';
-      html += '<div class="card-actions">';
-      if (f.apuntado) {
-        html +=
-          '<button class="btn joined" type="button" disabled>✓ Apuntado</button>';
-      } else {
-        html +=
-          '<button class="btn primary btn-rsvp" type="button" data-id="' +
-          f.id + '">Apuntarse</button>';
-      }
-      html += '</div></div></article>';
-    });
-
-    wrap.innerHTML = html;
-
-    wrap.querySelectorAll('.btn-rsvp').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        onRsvp(btn.getAttribute('data-id'), btn);
-      });
-    });
-  }
-
-  function setFormFilter(filter) {
-    state.formFilter = filter;
-    const team = teamById(state.currentTeamId);
-    $('filtAll').classList.toggle('active', filter === 'all');
-    $('filtTeam').classList.toggle('active', filter === 'team');
-    $('formTeamLabel').textContent =
-      filter === 'team'
-        ? 'organizadas por ' + team.corto
-        : 'todos los equipos del área';
-    renderFormaciones();
-  }
-
   // ─────────────────────────────────────────────── Render: Knowledge Base ──
 
-  /** Crea el nodo DOM de un mensaje de la KB y lo añade a la lista. */
   function appendKbMessage(msg) {
     const list = $('kbList');
     const node = document.createElement('div');
@@ -1000,7 +1149,6 @@
     });
   }
 
-  /** Repinta todo el historial de la KB del equipo activo. */
   function renderKbAll() {
     const list = $('kbList');
     list.innerHTML = '';
@@ -1083,19 +1231,19 @@
       answerMsg.text = full;
       answerMsg.sources = data.sources || [];
       // Repinta el historial completo: cubre también el caso de haber
-      // cambiado de equipo y vuelto durante el streaming.
-      if (state.currentTeamId === teamId) {
+      // cambiado de equipo/pantalla y vuelto durante el streaming.
+      if (state.currentTeamId === teamId && state.screen === 'team') {
         renderKbAll();
       }
     } catch (err) {
       answerMsg.streaming = false;
       answerMsg.text = '⚠️ No se pudo consultar la Knowledge Base.';
-      if (state.currentTeamId === teamId) {
+      if (state.currentTeamId === teamId && state.screen === 'team') {
         renderKbAll();
       }
     } finally {
       state.kbBusy = false;
-      if (state.currentTeamId === teamId) {
+      if (state.currentTeamId === teamId && state.screen === 'team') {
         $('kbText').focus();
       }
     }
@@ -1104,11 +1252,12 @@
   // ──────────────────────────────────────────────────────────── Acciones ──
 
   async function refreshChat() {
+    if (state.screen !== 'team' || !state.currentTeamId) return;
     const teamId = state.currentTeamId;
     try {
       const data = await api('getChat');
-      // Si el usuario cambió de equipo mientras llegaba la respuesta, se ignora.
-      if (teamId !== state.currentTeamId) return;
+      // Si la usuaria salió del equipo mientras llegaba la respuesta, se ignora.
+      if (teamId !== state.currentTeamId || state.screen !== 'team') return;
       if (data && data.ok) {
         state.messages = data.messages;
         renderChat();
@@ -1127,7 +1276,13 @@
       const data = await api('getFormaciones');
       if (data && data.ok) {
         state.formaciones = data.formaciones;
-        renderFormaciones();
+        if (state.screen === 'team') {
+          renderTeamFormaciones();
+        } else {
+          renderTeamsGrid();
+          renderCalendar();
+          renderCalDetail();
+        }
       }
     } catch (err) {
       // Silencioso: se reintenta en la siguiente acción.
@@ -1171,8 +1326,13 @@
           f.apuntado = true;
           f.asistentes = data.formacion.asistentes;
         }
-        renderFormaciones();
-        refreshChat();
+        if (state.screen === 'team') {
+          renderTeamFormaciones();
+          refreshChat();
+        } else {
+          renderCalendar();
+          renderCalDetail();
+        }
         toast('✅ Te has apuntado. Se añadirá al evento de Calendar (simulado).');
       } else {
         throw new Error((data && data.error) || 'Error');
@@ -1209,6 +1369,7 @@
 
     try {
       const data = await api('createFormacion', {
+        team: state.userTeamId,
         titulo: titulo,
         fecha: fechaCompleta.toISOString(),
         descripcion: descripcion
@@ -1216,9 +1377,13 @@
       if (data && data.ok) {
         $('formNueva').reset();
         toggleFormNueva(false);
+        // Salta el calendario al mes de la nueva formación.
+        state.calMonth = new Date(
+          fechaCompleta.getFullYear(), fechaCompleta.getMonth(), 1
+        );
+        state.calSelected = isoDay(fechaCompleta);
         await refreshFormaciones();
-        refreshChat();
-        toast('🎓 Formación creada y notificada al grupo (simulado).');
+        toast('🎓 Formación creada y notificada a tu equipo (simulado).');
         vscode.postMessage({
           type: 'notify',
           level: 'info',
@@ -1235,96 +1400,142 @@
     }
   }
 
-  // ─────────────────────────────────────────────── Selector de equipos ──
+  // ═══════════════════════════════════════════ NAVEGACIÓN ENTRE PANTALLAS ═══
 
-  function initTeamSelect() {
-    const select = $('teamSelect');
-    select.innerHTML = TEAMS.map(function (team) {
-      const own = team.id === state.userTeamId;
-      return (
-        '<option value="' + team.id + '">' +
-        team.icon + ' ' + escapeHtml(team.nombre) +
-        (own ? ' — tu equipo' : '') +
-        '</option>'
-      );
-    }).join('');
-    select.value = state.currentTeamId;
-    select.addEventListener('change', function () {
-      switchTeam(select.value);
-    });
+  function showScreen(screen) {
+    state.screen = screen;
+    $('screenHome').hidden = screen !== 'home';
+    $('screenTeam').hidden = screen !== 'team';
   }
 
-  /** Aplica cabeceras, avisos y textos contextuales del equipo activo. */
-  function applyTeamContext() {
-    const team = teamById(state.currentTeamId);
-    const foreign = isForeign(state.currentTeamId);
+  /** Entra en el espacio de un equipo (desde las tarjetas del menú). */
+  function enterTeam(teamId) {
+    state.currentTeamId = teamId;
+    const team = teamById(teamId);
+    const foreign = isForeign(teamId);
 
-    $('chatGroupEmail').textContent = team.grupo;
+    // Barra del equipo.
+    $('teamBarIcon').textContent = team.icon;
+    $('teamBarName').textContent = team.nombre;
+    $('teamBarGroup').textContent = team.grupo;
+    const badge = $('teamBarBadge');
+    badge.textContent = foreign ? 'Equipo ajeno' : 'Tu equipo';
+    badge.className = 'team-badge ' + (foreign ? 'foreign' : 'own');
+
+    // Avisos de espacio ajeno.
+    $('chatWarn').hidden = !foreign;
+    $('kbWarn').hidden = !foreign;
+
+    // Contextos de KB y chat.
     $('kbPath').textContent = '📁 ' + KB_BASE_PATH + '/' + team.kbFolder;
     $('kbDocs').textContent = foreign
       ? '📄 ' + reducedDocs(team) + ' de ' + team.kbDocs + ' docs (reducida)'
       : '📄 ' + team.kbDocs + ' docs indexados';
+    $('chatGroupEmail').textContent = team.grupo;
     $('chatText').placeholder =
       'Mensaje a ' + team.grupo + '…  (Enter para enviar)';
     $('kbText').placeholder =
       'Pregunta a la KB de ' + team.corto + '…  (Enter para enviar)';
-    $('filtTeam').textContent = team.icon + ' De ' + team.corto;
+    $('formTeamLabel').textContent = 'de ' + team.corto;
 
-    // Avisos al estar en el espacio de OTRO equipo.
-    $('chatWarn').hidden = !foreign;
-    $('kbWarn').hidden = !foreign;
-  }
+    // La KB SIEMPRE es la pestaña inicial al entrar.
+    activateTeamTab('kb', true);
 
-  /** Cambia el equipo activo y repinta chat, KB y formaciones. */
-  function switchTeam(teamId) {
-    if (teamId === state.currentTeamId) return;
-    state.currentTeamId = teamId;
-    const team = teamById(teamId);
-
-    applyTeamContext();
-    setTyping(null);
-    $('syncText').textContent = 'Sincronizando…';
     state.messages = [];
     renderChat();
-    setFormFilter(state.formFilter); // re-aplica el filtro con el nuevo equipo
+    setTyping(null);
+    $('syncText').textContent = 'Sincronizando…';
     renderKbAll();
     renderKbSuggestions();
+    renderTeamFormaciones();
 
+    showScreen('team');
     refreshChat().then(function () {
       const list = $('chatList');
       list.scrollTop = list.scrollHeight;
     });
-    toast(
-      team.icon + ' ' + team.nombre +
-      (isForeign(teamId) ? ' (equipo ajeno)' : ' — tu equipo')
-    );
   }
 
-  // ──────────────────────────────────────────────────────────── Pestañas ──
+  /** Vuelve al menú inicial. */
+  function goHome() {
+    state.currentTeamId = null;
+    showScreen('home');
+    renderTeamsGrid();
+    renderCalendar();
+    renderCalDetail();
+  }
 
-  function initTabs() {
-    const tabChat = $('tabChat');
-    const tabKb = $('tabKb');
+  // ─────────────────────────────────────────────── Pestañas del menú ──
 
-    function activate(tab) {
-      const isChat = tab === 'chat';
-      tabChat.classList.toggle('active', isChat);
-      tabKb.classList.toggle('active', !isChat);
-      tabChat.setAttribute('aria-selected', String(isChat));
-      tabKb.setAttribute('aria-selected', String(!isChat));
-      $('viewChat').hidden = !isChat;
-      $('viewKb').hidden = isChat;
-      if (isChat) {
-        $('chatList').scrollTop = $('chatList').scrollHeight;
-        $('chatText').focus();
-      } else {
-        $('kbList').scrollTop = $('kbList').scrollHeight;
-        $('kbText').focus();
-      }
+  function activateHomeTab(tab) {
+    state.homeTab = tab;
+    const isTeams = tab === 'teams';
+    $('tabTeams').classList.toggle('active', isTeams);
+    $('tabCalendar').classList.toggle('active', !isTeams);
+    $('tabTeams').setAttribute('aria-selected', String(isTeams));
+    $('tabCalendar').setAttribute('aria-selected', String(!isTeams));
+    $('viewTeams').hidden = !isTeams;
+    $('viewCalendar').hidden = isTeams;
+    if (!isTeams) {
+      renderCalendar();
+      renderCalDetail();
+    }
+  }
+
+  // ───────────────────────────────────── Pestañas del equipo (KB / chat) ──
+
+  /**
+   * Activa una pestaña del equipo. El chat exige haber aceptado el aviso
+   * modal (una vez por equipo y sesión); si no, se muestra el aviso.
+   */
+  function activateTeamTab(tab, skipModal) {
+    if (tab === 'chat' && !skipModal && !state.chatUnlocked[state.currentTeamId]) {
+      openChatModal();
+      return;
     }
 
-    tabChat.addEventListener('click', function () { activate('chat'); });
-    tabKb.addEventListener('click', function () { activate('kb'); });
+    state.teamTab = tab;
+    const isKb = tab === 'kb';
+    $('tabKb').classList.toggle('active', isKb);
+    $('tabChat').classList.toggle('active', !isKb);
+    $('tabKb').setAttribute('aria-selected', String(isKb));
+    $('tabChat').setAttribute('aria-selected', String(!isKb));
+    $('viewKb').hidden = !isKb;
+    $('viewChat').hidden = isKb;
+    if (isKb) {
+      $('kbList').scrollTop = $('kbList').scrollHeight;
+      $('kbText').focus();
+    } else {
+      $('chatList').scrollTop = $('chatList').scrollHeight;
+      $('chatText').focus();
+    }
+  }
+
+  // ─────────────────────────────────────── Aviso modal antes del chat ──
+
+  function openChatModal() {
+    const team = teamById(state.currentTeamId);
+    const foreign = isForeign(state.currentTeamId);
+    $('chatModalBody').innerHTML = foreign
+      ? 'Estás a punto de escribir al grupo de <strong>' +
+        escapeHtml(team.nombre) + '</strong>. Atienden el chat cuando pueden: ' +
+        'ten <strong>paciencia</strong> con las respuestas y pregunta solo si ' +
+        'su Knowledge Base no ha resuelto tu duda.'
+      : 'Muchas dudas del día a día ya están resueltas en la Knowledge Base ' +
+        'de <strong>' + escapeHtml(team.nombre) + '</strong>. ' +
+        '¿Seguro que no prefieres consultarla primero?';
+    $('chatModal').hidden = false;
+    $('btnModalKb').focus();
+  }
+
+  function closeChatModal(openChat) {
+    $('chatModal').hidden = true;
+    if (openChat) {
+      state.chatUnlocked[state.currentTeamId] = true;
+      activateTeamTab('chat', true);
+    } else {
+      activateTeamTab('kb', true);
+    }
   }
 
   // ─────────────────────────────────────────────────────── Pequeña UI aux ──
@@ -1335,6 +1546,10 @@
     form.hidden = !willShow;
     $('btnToggleNueva').textContent = willShow ? '－ Cerrar' : '＋ Nueva';
     if (willShow) {
+      const myTeam = teamById(state.userTeamId);
+      $('formNote').textContent =
+        'Se creará a nombre de tu equipo (' + myTeam.icon + ' ' +
+        myTeam.corto + ') y se avisará a su grupo.';
       const today = new Date();
       const iso = today.toISOString().slice(0, 10);
       const fFecha = $('fFecha');
@@ -1369,7 +1584,6 @@
     } catch (err) {
       state.userTeamId = TEAMS[0].id;
     }
-    state.currentTeamId = state.userTeamId;
     const myTeam = teamById(state.userTeamId);
 
     // 2) Cabecera con identidad + equipo propio.
@@ -1380,10 +1594,64 @@
     avatar.textContent = initials(USER.name);
     avatar.title = USER.name + ' (' + USER.email + ') · ' + myTeam.nombre;
 
-    initTeamSelect();
-    initTabs();
-    applyTeamContext();
-    setFormFilter('all');
+    // 3) Menú inicial.
+    $('tabTeams').addEventListener('click', function () {
+      activateHomeTab('teams');
+    });
+    $('tabCalendar').addEventListener('click', function () {
+      activateHomeTab('calendar');
+    });
+    renderTeamsGrid();
+
+    // Calendario.
+    $('calPrev').addEventListener('click', function () {
+      state.calMonth = new Date(
+        state.calMonth.getFullYear(), state.calMonth.getMonth() - 1, 1
+      );
+      renderCalendar();
+    });
+    $('calNext').addEventListener('click', function () {
+      state.calMonth = new Date(
+        state.calMonth.getFullYear(), state.calMonth.getMonth() + 1, 1
+      );
+      renderCalendar();
+    });
+    $('calToday').addEventListener('click', function () {
+      const today = new Date();
+      state.calMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      state.calSelected = isoDay(today);
+      renderCalendar();
+      renderCalDetail();
+    });
+    renderCalendar();
+    renderCalDetail();
+
+    // 4) Pantalla de equipo.
+    $('btnBackMenu').addEventListener('click', goHome);
+    $('tabKb').addEventListener('click', function () {
+      activateTeamTab('kb');
+    });
+    $('tabChat').addEventListener('click', function () {
+      activateTeamTab('chat');
+    });
+
+    // Aviso modal del chat.
+    $('btnModalKb').addEventListener('click', function () {
+      closeChatModal(false);
+    });
+    $('btnModalOpen').addEventListener('click', function () {
+      closeChatModal(true);
+    });
+    $('chatModal').addEventListener('click', function (event) {
+      if (event.target === $('chatModal')) {
+        closeChatModal(false);
+      }
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && !$('chatModal').hidden) {
+        closeChatModal(false);
+      }
+    });
 
     // Chat.
     $('chatForm').addEventListener('submit', onSendMessage);
@@ -1413,10 +1681,8 @@
         $('kbForm').requestSubmit();
       }
     });
-    renderKbAll();
-    renderKbSuggestions();
 
-    // Formaciones.
+    // Nueva formación (desde el calendario, a nombre del equipo propio).
     $('btnToggleNueva').addEventListener('click', function () {
       toggleFormNueva();
     });
@@ -1424,18 +1690,8 @@
       toggleFormNueva(false);
     });
     $('formNueva').addEventListener('submit', onCreateFormacion);
-    $('filtAll').addEventListener('click', function () {
-      setFormFilter('all');
-    });
-    $('filtTeam').addEventListener('click', function () {
-      setFormFilter('team');
-    });
 
-    // Carga inicial + polling del chat.
-    refreshChat().then(function () {
-      const list = $('chatList');
-      list.scrollTop = list.scrollHeight;
-    });
+    // 5) Datos + polling del chat (solo actúa dentro de un equipo).
     refreshFormaciones();
     setInterval(refreshChat, POLL_INTERVAL_MS);
   }

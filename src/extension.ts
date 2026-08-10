@@ -47,7 +47,7 @@ interface UserInfo {
 
 let currentPanel: vscode.WebviewPanel | undefined;
 
-// ─────────────────────────────────────────────────────────────── Activación ──
+// ─────────────────────────────────────────────────────────── Activación ──
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
@@ -78,7 +78,7 @@ export function deactivate(): void {
   // Nada que limpiar: el panel se libera en su propio onDidDispose.
 }
 
-// ─────────────────────────────────────────────────────────── Autenticación ──
+// ─────────────────────────────────────────────────────── Autenticación ──
 
 /**
  * Devuelve la identidad del usuario.
@@ -105,7 +105,7 @@ async function getUserSession(): Promise<UserInfo | undefined> {
   return { name: session.account.label, email: session.account.id };
 }
 
-// ──────────────────────────────────────────────────────────────── Webview ──
+// ──────────────────────────────────────────────────────────── Webview ──
 
 function openPortalPanel(
   context: vscode.ExtensionContext,
@@ -123,7 +123,7 @@ function openPortalPanel(
     vscode.ViewColumn.One,
     {
       enableScripts: true,
-      // Mantiene el estado del chat al ocultar/mostrar el panel.
+      // Mantiene el estado (pantalla, chats, KB) al ocultar/mostrar el panel.
       retainContextWhenHidden: true,
       localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')]
     }
@@ -171,8 +171,12 @@ function openPortalPanel(
 
 /**
  * Devuelve el HTML del webview.
- * El CSS y el JS viven en /media para mantener el código organizado; la
- * configuración (usuario + modo mock) se inyecta como JSON con nonce.
+ * Estructura de pantallas:
+ *   - screenHome: menú inicial con pestañas «Equipos» (tarjetas) y
+ *     «Calendario de formaciones» (mes completo del área).
+ *   - screenTeam: espacio de un equipo con «← Menú», pestañas
+ *     Knowledge Base (primera) y Chat (segunda, tras aviso modal), y las
+ *     formaciones de ese equipo.
  */
 function getWebviewContent(
   webview: vscode.Webview,
@@ -232,9 +236,6 @@ function getWebviewContent(
         </div>
       </div>
       <div class="topbar-right">
-        <label class="select-wrap" title="Equipo activo">
-          <select id="teamSelect" aria-label="Seleccionar equipo"></select>
-        </label>
         <span class="badge-demo" id="badgeDemo" hidden>MODO DEMO</span>
         <span class="avatar avatar-own" id="userAvatar" title=""></span>
       </div>
@@ -246,119 +247,184 @@ function getWebviewContent(
       Google ni a Copilot.
     </div>
 
-    <!-- ══════════════════ Columnas principales ══════════════════ -->
-    <main class="columns">
-
-      <!-- ── Chat (Google Grupos) + Knowledge Base (Copilot) ── -->
-      <section class="panel chat-panel" aria-label="Chat y Knowledge Base">
+    <!-- ══════════════════ PANTALLA: MENÚ INICIAL ══════════════════ -->
+    <main class="screen" id="screenHome">
+      <section class="panel home-panel">
         <div class="tabs" role="tablist">
-          <button class="tab active" id="tabChat" type="button" role="tab"
-            aria-selected="true">💬 Chat</button>
-          <button class="tab" id="tabKb" type="button" role="tab"
-            aria-selected="false">📚 Knowledge Base</button>
+          <button class="tab active" id="tabTeams" type="button" role="tab"
+            aria-selected="true">🏦 Equipos</button>
+          <button class="tab" id="tabCalendar" type="button" role="tab"
+            aria-selected="false">🗓️ Calendario de formaciones</button>
         </div>
 
-        <!-- Vista: chat del equipo -->
-        <div class="tab-view" id="viewChat" role="tabpanel">
-          <div class="panel-head">
-            <h2><span class="panel-icon">💬</span> Chat
-              <span class="head-sub" id="chatGroupEmail"></span></h2>
-            <span class="sync" id="syncStatus">
-              <span class="dot"></span><span id="syncText">Sincronizando…</span>
-            </span>
-          </div>
-          <div class="warn-banner" id="chatWarn" hidden>
-            ⚠️ Este es el chat de <strong>otro equipo</strong>: ten paciencia
-            con las respuestas y pregunta solo si su Knowledge Base no ha
-            podido resolver tu duda.
-          </div>
-          <div class="chat-list" id="chatList" aria-live="polite"></div>
-          <div class="typing" id="typing" hidden>
-            <span class="typing-dots"><i></i><i></i><i></i></span>
-            <span id="typingName"></span>&nbsp;está escribiendo…
-          </div>
-          <form class="chat-input" id="chatForm">
-            <textarea id="chatText" rows="1"
-              placeholder="Escribe un mensaje para el grupo…  (Enter para enviar)"></textarea>
-            <button class="btn primary send" type="submit" title="Enviar al grupo" aria-label="Enviar mensaje">
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path fill="currentColor" d="M1.72 1.05a.75.75 0 0 0-.97.97l2.1 5.23L9 8 2.85 8.75l-2.1 5.23a.75.75 0 0 0 .97.97l13.5-6.1a.75.75 0 0 0 0-1.36L1.72 1.05Z"/>
-              </svg>
-            </button>
-          </form>
+        <!-- Vista: selección de equipo -->
+        <div class="tab-view" id="viewTeams" role="tabpanel">
+          <p class="home-hint">
+            Elige un equipo para entrar en su espacio: Knowledge Base, chat
+            del grupo y sus formaciones.
+          </p>
+          <div class="teams-grid" id="teamsGrid"></div>
         </div>
 
-        <!-- Vista: Knowledge Base (Copilot, simulado) -->
-        <div class="tab-view" id="viewKb" role="tabpanel" hidden>
-          <div class="kb-meta">
-            <span id="kbPath">📁 —</span>
-            <span id="kbDocs">📄 —</span>
-            <span>⚡ GitHub Copilot <em>(simulado)</em></span>
+        <!-- Vista: calendario completo del área -->
+        <div class="tab-view" id="viewCalendar" role="tabpanel" hidden>
+          <div class="cal-toolbar">
+            <div class="cal-nav">
+              <button class="btn ghost cal-btn" id="calPrev" type="button"
+                aria-label="Mes anterior">‹</button>
+              <button class="btn ghost cal-btn" id="calToday" type="button">Hoy</button>
+              <button class="btn ghost cal-btn" id="calNext" type="button"
+                aria-label="Mes siguiente">›</button>
+            </div>
+            <h2 class="cal-title" id="calTitle"></h2>
+            <button class="btn ghost" id="btnToggleNueva" type="button">＋ Nueva</button>
           </div>
-          <div class="warn-banner" id="kbWarn" hidden>
-            ⚠️ <strong>Knowledge Base reducida:</strong> estás consultando la
-            KB de otro equipo. Puede contener errores o información
-            desactualizada; para temas críticos confirma con el equipo
-            propietario.
-          </div>
-          <div class="chat-list kb-list" id="kbList" aria-live="polite"></div>
-          <div class="kb-suggest" id="kbSuggest"></div>
-          <form class="chat-input" id="kbForm">
-            <textarea id="kbText" rows="1"
-              placeholder="Pregunta a la Knowledge Base…  (Enter para enviar)"></textarea>
-            <button class="btn primary send" type="submit" title="Preguntar" aria-label="Preguntar a la Knowledge Base">
-              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                <path fill="currentColor" d="M1.72 1.05a.75.75 0 0 0-.97.97l2.1 5.23L9 8 2.85 8.75l-2.1 5.23a.75.75 0 0 0 .97.97l13.5-6.1a.75.75 0 0 0 0-1.36L1.72 1.05Z"/>
-              </svg>
-            </button>
-          </form>
-        </div>
-      </section>
 
-      <!-- ── Formaciones (Calendar + Sheets) ── -->
-      <section class="panel form-panel" aria-label="Formaciones">
-        <div class="panel-head">
-          <h2><span class="panel-icon">🎓</span> Formaciones
-            <span class="head-sub" id="formTeamLabel"></span></h2>
-          <button class="btn ghost" id="btnToggleNueva" type="button">＋ Nueva</button>
-        </div>
-
-        <!-- Filtro: todas las formaciones del área vs. las del equipo activo -->
-        <div class="filter-row">
-          <button class="filter-chip active" id="filtAll" type="button">Todas</button>
-          <button class="filter-chip" id="filtTeam" type="button">Del equipo</button>
-        </div>
-
-        <form class="form-nueva" id="formNueva" hidden>
-          <div class="field">
-            <label for="fTitulo">Título</label>
-            <input id="fTitulo" type="text" maxlength="80"
-              placeholder="Ej. Introducción a Docker">
-          </div>
-          <div class="field-row">
+          <form class="form-nueva" id="formNueva" hidden>
+            <p class="form-note" id="formNote"></p>
             <div class="field">
-              <label for="fFecha">Fecha</label>
-              <input id="fFecha" type="date">
+              <label for="fTitulo">Título</label>
+              <input id="fTitulo" type="text" maxlength="80"
+                placeholder="Ej. Novedades regulatorias de liquidez">
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label for="fFecha">Fecha</label>
+                <input id="fFecha" type="date">
+              </div>
+              <div class="field">
+                <label for="fHora">Hora</label>
+                <input id="fHora" type="time" value="10:00">
+              </div>
             </div>
             <div class="field">
-              <label for="fHora">Hora</label>
-              <input id="fHora" type="time" value="10:00">
+              <label for="fDesc">Descripción</label>
+              <textarea id="fDesc" rows="3"
+                placeholder="¿De qué trata la formación?"></textarea>
             </div>
-          </div>
-          <div class="field">
-            <label for="fDesc">Descripción</label>
-            <textarea id="fDesc" rows="3"
-              placeholder="¿De qué trata la formación?"></textarea>
-          </div>
-          <div class="form-actions">
-            <button class="btn primary" type="submit" id="btnCrear">Crear y notificar al grupo</button>
-            <button class="btn secondary" type="button" id="btnCancelarNueva">Cancelar</button>
-          </div>
-        </form>
+            <div class="form-actions">
+              <button class="btn primary" type="submit" id="btnCrear">Crear y notificar al grupo</button>
+              <button class="btn secondary" type="button" id="btnCancelarNueva">Cancelar</button>
+            </div>
+          </form>
 
-        <div class="cards" id="cardsList"></div>
+          <div class="cal-scroll">
+            <div class="cal-weekdays">
+              <span>lun</span><span>mar</span><span>mié</span><span>jue</span>
+              <span>vie</span><span>sáb</span><span>dom</span>
+            </div>
+            <div class="cal-grid" id="calGrid"></div>
+            <div class="cal-detail" id="calDetail"></div>
+          </div>
+        </div>
       </section>
     </main>
+
+    <!-- ══════════════════ PANTALLA: EQUIPO ══════════════════ -->
+    <main class="screen" id="screenTeam" hidden>
+      <div class="team-bar">
+        <button class="btn ghost btn-back" id="btnBackMenu" type="button"
+          title="Volver al menú de equipos">← Menú</button>
+        <span class="team-bar-icon" id="teamBarIcon"></span>
+        <div class="team-bar-text">
+          <span class="team-bar-name" id="teamBarName"></span>
+          <span class="team-bar-group" id="teamBarGroup"></span>
+        </div>
+        <span class="team-badge" id="teamBarBadge"></span>
+      </div>
+
+      <div class="columns">
+
+        <!-- ── Knowledge Base (primera) + Chat (segunda, tras aviso) ── -->
+        <section class="panel chat-panel" aria-label="Knowledge Base y chat">
+          <div class="tabs" role="tablist">
+            <button class="tab active" id="tabKb" type="button" role="tab"
+              aria-selected="true">📚 Knowledge Base</button>
+            <button class="tab" id="tabChat" type="button" role="tab"
+              aria-selected="false">💬 Chat del equipo</button>
+          </div>
+
+          <!-- Vista: Knowledge Base (Copilot, simulado) -->
+          <div class="tab-view" id="viewKb" role="tabpanel">
+            <div class="kb-meta">
+              <span id="kbPath">📁 —</span>
+              <span id="kbDocs">📄 —</span>
+              <span>⚡ GitHub Copilot <em>(simulado)</em></span>
+            </div>
+            <div class="warn-banner" id="kbWarn" hidden>
+              ⚠️ <strong>Knowledge Base reducida:</strong> estás consultando la
+              KB de otro equipo. Puede contener errores o información
+              desactualizada; para temas críticos confirma con el equipo
+              propietario.
+            </div>
+            <div class="chat-list kb-list" id="kbList" aria-live="polite"></div>
+            <div class="kb-suggest" id="kbSuggest"></div>
+            <form class="chat-input" id="kbForm">
+              <textarea id="kbText" rows="1"
+                placeholder="Pregunta a la Knowledge Base…  (Enter para enviar)"></textarea>
+              <button class="btn primary send" type="submit" title="Preguntar" aria-label="Preguntar a la Knowledge Base">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path fill="currentColor" d="M1.72 1.05a.75.75 0 0 0-.97.97l2.1 5.23L9 8 2.85 8.75l-2.1 5.23a.75.75 0 0 0 .97.97l13.5-6.1a.75.75 0 0 0 0-1.36L1.72 1.05Z"/>
+                </svg>
+              </button>
+            </form>
+          </div>
+
+          <!-- Vista: chat del equipo (se abre tras el aviso modal) -->
+          <div class="tab-view" id="viewChat" role="tabpanel" hidden>
+            <div class="panel-head">
+              <h2><span class="panel-icon">💬</span> Chat
+                <span class="head-sub" id="chatGroupEmail"></span></h2>
+              <span class="sync" id="syncStatus">
+                <span class="dot"></span><span id="syncText">Sincronizando…</span>
+              </span>
+            </div>
+            <div class="warn-banner" id="chatWarn" hidden>
+              ⚠️ Este es el chat de <strong>otro equipo</strong>: ten paciencia
+              con las respuestas y pregunta solo si su Knowledge Base no ha
+              podido resolver tu duda.
+            </div>
+            <div class="chat-list" id="chatList" aria-live="polite"></div>
+            <div class="typing" id="typing" hidden>
+              <span class="typing-dots"><i></i><i></i><i></i></span>
+              <span id="typingName"></span>&nbsp;está escribiendo…
+            </div>
+            <form class="chat-input" id="chatForm">
+              <textarea id="chatText" rows="1"
+                placeholder="Escribe un mensaje para el grupo…  (Enter para enviar)"></textarea>
+              <button class="btn primary send" type="submit" title="Enviar al grupo" aria-label="Enviar mensaje">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path fill="currentColor" d="M1.72 1.05a.75.75 0 0 0-.97.97l2.1 5.23L9 8 2.85 8.75l-2.1 5.23a.75.75 0 0 0 .97.97l13.5-6.1a.75.75 0 0 0 0-1.36L1.72 1.05Z"/>
+                </svg>
+              </button>
+            </form>
+          </div>
+        </section>
+
+        <!-- ── Formaciones del equipo ── -->
+        <section class="panel form-panel" aria-label="Formaciones del equipo">
+          <div class="panel-head">
+            <h2><span class="panel-icon">🎓</span> Formaciones
+              <span class="head-sub" id="formTeamLabel"></span></h2>
+          </div>
+          <div class="cards" id="cardsList"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Aviso modal antes de abrir el chat de un equipo -->
+  <div class="modal-overlay" id="chatModal" hidden>
+    <div class="modal" role="alertdialog" aria-modal="true"
+      aria-labelledby="chatModalTitle" aria-describedby="chatModalBody">
+      <div class="modal-icon">⚠️</div>
+      <h3 class="modal-title" id="chatModalTitle">¿Abrir el chat del equipo?</h3>
+      <p class="modal-body" id="chatModalBody"></p>
+      <div class="modal-actions">
+        <button class="btn primary" id="btnModalKb" type="button">Consultar la KB primero</button>
+        <button class="btn warn" id="btnModalOpen" type="button">Abrir el chat de todas formas</button>
+      </div>
+    </div>
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
