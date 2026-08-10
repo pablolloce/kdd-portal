@@ -519,6 +519,35 @@
       return Object.assign({ id: uid(), apuntado: false }, f);
     });
 
+    /**
+     * Directorio de proyectos y personas del área (en real: hojas
+     * "Proyectos" y "Personas" del spreadsheet + informe de Looker Studio).
+     */
+    const PERSONAS = [
+      { email: USER.email, nombre: USER.name, teamId: MOCK_USER_TEAM, rol: 'Desarrolladora' },
+      { email: 'lucia.ferrer@banco.demo', nombre: 'Lucía Ferrer', teamId: 'front-office', rol: 'Tech Lead' },
+      { email: 'marcos.pena@banco.demo', nombre: 'Marcos Peña', teamId: 'front-office', rol: 'Desarrollador' },
+      { email: 'irene.solano@banco.demo', nombre: 'Irene Solano', teamId: 'front-office', rol: 'Analista funcional' },
+      { email: 'nuria.campos@banco.demo', nombre: 'Nuria Campos', teamId: 'liquidez', rol: 'Tech Lead' },
+      { email: 'oscar.molina@banco.demo', nombre: 'Óscar Molina', teamId: 'liquidez', rol: 'Desarrollador' },
+      { email: 'paula.nunez@banco.demo', nombre: 'Paula Núñez', teamId: 'riesgos', rol: 'Tech Lead · Quant' },
+      { email: 'andres.vega@banco.demo', nombre: 'Andrés Vega', teamId: 'riesgos', rol: 'Desarrollador' },
+      { email: 'clara.ibanez@banco.demo', nombre: 'Clara Ibáñez', teamId: 'riesgos', rol: 'Analista de datos' },
+      { email: 'sergio.lara@banco.demo', nombre: 'Sergio Lara', teamId: 'back-office', rol: 'Tech Lead' },
+      { email: 'eva.duarte@banco.demo', nombre: 'Eva Duarte', teamId: 'back-office', rol: 'Analista funcional' }
+    ];
+
+    const PROYECTOS = [
+      { id: 'p-mx361', nombre: 'Migración Murex a MX.3.61', teamId: 'front-office', estado: 'En curso', avance: 65, responsable: 'lucia.ferrer@banco.demo', descripcion: 'Upgrade de la plataforma de negociación y regresión completa de pricers.', personas: ['lucia.ferrer@banco.demo', 'marcos.pena@banco.demo', USER.email, 'irene.solano@banco.demo'] },
+      { id: 'p-blotter', nombre: 'Blotter FX v2', teamId: 'front-office', estado: 'En curso', avance: 30, responsable: 'marcos.pena@banco.demo', descripcion: 'Nuevo blotter en tiempo real para la mesa de divisa.', personas: ['marcos.pena@banco.demo', USER.email] },
+      { id: 'p-iso', nombre: 'ISO 20022 · Fase 2 (pacs/camt)', teamId: 'liquidez', estado: 'En curso', avance: 80, responsable: 'oscar.molina@banco.demo', descripcion: 'Migración de pagos y extractos al esquema MX.', personas: ['oscar.molina@banco.demo', 'nuria.campos@banco.demo', 'sergio.lara@banco.demo'] },
+      { id: 'p-dashliq', nombre: 'Dashboard de liquidez intradía', teamId: 'liquidez', estado: 'En pausa', avance: 45, responsable: 'nuria.campos@banco.demo', descripcion: 'Visualización del buffer y de la previsión intradía por divisa.', personas: ['nuria.campos@banco.demo', 'clara.ibanez@banco.demo'] },
+      { id: 'p-varclima', nombre: 'VaR · escenarios climáticos', teamId: 'riesgos', estado: 'En curso', avance: 20, responsable: 'paula.nunez@banco.demo', descripcion: 'Incorporación del riesgo climático al juego de escenarios de estrés.', personas: ['paula.nunez@banco.demo', 'andres.vega@banco.demo', 'clara.ibanez@banco.demo'] },
+      { id: 'p-limv2', nombre: 'Límites intradía v2', teamId: 'riesgos', estado: 'Cerrado', avance: 100, responsable: 'andres.vega@banco.demo', descripcion: 'Monitor de excesos con alertas en tiempo real.', personas: ['andres.vega@banco.demo'] },
+      { id: 'p-camt', nombre: 'Conciliación camt.053', teamId: 'back-office', estado: 'En curso', avance: 55, responsable: 'eva.duarte@banco.demo', descripcion: 'Sustitución de MT940 por camt.053 en la conciliación de nostros.', personas: ['eva.duarte@banco.demo', 'sergio.lara@banco.demo'] },
+      { id: 'p-matchmx', nombre: 'Matching de confirmaciones MX', teamId: 'back-office', estado: 'En curso', avance: 10, responsable: 'sergio.lara@banco.demo', descripcion: 'Adaptación del matching a los mensajes semt/seev de ISO 20022.', personas: ['sergio.lara@banco.demo', 'eva.duarte@banco.demo', 'irene.solano@banco.demo'] }
+    ];
+
     function flushScheduled(store) {
       const t = Date.now();
       for (let i = store.scheduled.length - 1; i >= 0; i--) {
@@ -661,6 +690,16 @@
         const team = teamById(teamId);
         const result = findKbAnswer(team, payload.question);
         return { ok: true, answer: result.answer, sources: result.sources };
+      },
+
+      getDirectorio: function () {
+        return {
+          ok: true,
+          personas: PERSONAS.slice(),
+          proyectos: PROYECTOS.map(function (p) {
+            return Object.assign({}, p, { personas: p.personas.slice() });
+          })
+        };
       }
     };
   })();
@@ -696,6 +735,8 @@
           // En modo real esta acción NO va a Apps Script: usará la
           // Language Model API (Copilot) desde la extensión.
           return MockBackend.kbAsk(teamId, payload);
+        case 'getDirectorio':
+          return MockBackend.getDirectorio();
         default:
           return { ok: false, error: 'Acción desconocida: ' + action };
       }
@@ -731,8 +772,14 @@
     currentTeamId: null,
     /** 'home' | 'team' */
     screen: 'home',
-    /** Pestaña del menú: 'teams' | 'calendar'. */
+    /** Pestaña del menú: 'teams' | 'calendar' | 'dir'. */
     homeTab: 'teams',
+    /** Directorio de proyectos/personas (se carga con getDirectorio). */
+    directorio: null,
+    dirQuery: '',
+    dirTeam: 'all',
+    /** Vista del directorio: 'proyectos' | 'personas'. */
+    dirView: 'proyectos',
     /** Pestaña dentro del equipo: 'kb' | 'chat'. */
     teamTab: 'kb',
     /** teamId → true una vez aceptado el aviso del chat. */
@@ -980,6 +1027,234 @@
 
     wrap.innerHTML = html;
     attachRsvpHandlers(wrap);
+  }
+
+  // ═══════════════════════ MENÚ: DIRECTORIO DE PROYECTOS Y PERSONAS ═══
+  //  Réplica navegable del informe de Looker Studio del área: búsqueda
+  //  libre + filtro por equipo, en dos vistas (proyectos / personas).
+  //  En real se alimenta de las hojas "Proyectos" y "Personas" vía
+  //  Apps Script (action=getDirectorio); el botón inferior abre el
+  //  informe original de Looker Studio en el navegador.
+
+  async function loadDirectorio() {
+    try {
+      const data = await api('getDirectorio');
+      if (data && data.ok) {
+        state.directorio = { personas: data.personas, proyectos: data.proyectos };
+        if (state.screen === 'home' && state.homeTab === 'dir') {
+          renderDirectorio();
+        }
+      }
+    } catch (err) {
+      // Silencioso: se reintenta al abrir la pestaña.
+    }
+  }
+
+  function personaByEmail(email) {
+    if (!state.directorio) return null;
+    return state.directorio.personas.find(function (p) {
+      return p.email === email;
+    }) || null;
+  }
+
+  function proyectosDePersona(email) {
+    if (!state.directorio) return [];
+    return state.directorio.proyectos.filter(function (p) {
+      return p.personas.indexOf(email) !== -1;
+    });
+  }
+
+  function estadoClass(estado) {
+    if (estado === 'En curso') return 'st-curso';
+    if (estado === 'En pausa') return 'st-pausa';
+    return 'st-cerrado';
+  }
+
+  function filteredProyectos() {
+    const q = normalize(state.dirQuery);
+    return state.directorio.proyectos.filter(function (p) {
+      if (state.dirTeam !== 'all' && p.teamId !== state.dirTeam) return false;
+      if (!q) return true;
+      const team = teamById(p.teamId);
+      const nombres = p.personas.map(function (email) {
+        const per = personaByEmail(email);
+        return per ? per.nombre + ' ' + per.rol : email;
+      }).join(' ');
+      return normalize(
+        p.nombre + ' ' + p.estado + ' ' + (p.descripcion || '') + ' ' +
+        team.nombre + ' ' + team.corto + ' ' + nombres
+      ).indexOf(q) !== -1;
+    });
+  }
+
+  function filteredPersonas() {
+    const q = normalize(state.dirQuery);
+    return state.directorio.personas.filter(function (p) {
+      if (state.dirTeam !== 'all' && p.teamId !== state.dirTeam) return false;
+      if (!q) return true;
+      const team = teamById(p.teamId);
+      const proyectos = proyectosDePersona(p.email)
+        .map(function (x) { return x.nombre; }).join(' ');
+      return normalize(
+        p.nombre + ' ' + p.rol + ' ' + p.email + ' ' +
+        team.nombre + ' ' + team.corto + ' ' + proyectos
+      ).indexOf(q) !== -1;
+    });
+  }
+
+  function renderDirKpis() {
+    const dir = state.directorio;
+    const enCurso = dir.proyectos.filter(function (p) {
+      return p.estado === 'En curso';
+    }).length;
+    $('dirKpis').innerHTML =
+      '<div class="kpi"><span class="kpi-num">' + dir.proyectos.length +
+      '</span><span class="kpi-label">Proyectos</span></div>' +
+      '<div class="kpi"><span class="kpi-num">' + enCurso +
+      '</span><span class="kpi-label">En curso</span></div>' +
+      '<div class="kpi"><span class="kpi-num">' + dir.personas.length +
+      '</span><span class="kpi-label">Personas</span></div>' +
+      '<div class="kpi"><span class="kpi-num">' + TEAMS.length +
+      '</span><span class="kpi-label">Equipos</span></div>';
+  }
+
+  function renderDirTeamChips() {
+    const box = $('dirTeamChips');
+    let html =
+      '<button class="chip-btn' + (state.dirTeam === 'all' ? ' active' : '') +
+      '" type="button" data-team="all">Todos</button>';
+    TEAMS.forEach(function (team) {
+      html +=
+        '<button class="chip-btn' + (state.dirTeam === team.id ? ' active' : '') +
+        '" type="button" data-team="' + team.id + '">' +
+        '<i class="tdot ' + teamColorClass(team.id) + '"></i>' +
+        escapeHtml(team.corto) + '</button>';
+    });
+    box.innerHTML = html;
+    box.querySelectorAll('.chip-btn').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        state.dirTeam = chip.getAttribute('data-team');
+        renderDirectorio();
+      });
+    });
+  }
+
+  function personaChipHtml(email, responsable) {
+    const per = personaByEmail(email);
+    const nombre = per ? per.nombre : email;
+    return (
+      '<span class="pers-chip' + (responsable ? ' resp' : '') + '">' +
+      '<span class="avatar mini ' + avatarClass(nombre) + '">' +
+      escapeHtml(initials(nombre)) + '</span>' +
+      escapeHtml(nombre) + (responsable ? ' ★' : '') + '</span>'
+    );
+  }
+
+  function renderDirList() {
+    const wrap = $('dirList');
+    let html = '';
+
+    if (state.dirView === 'proyectos') {
+      const items = filteredProyectos();
+      if (!items.length) {
+        wrap.innerHTML =
+          '<div class="empty"><span class="empty-icon">🔎</span>' +
+          'Sin resultados' +
+          (state.dirQuery ? ' para «' + escapeHtml(state.dirQuery) + '»' : '') +
+          '.</div>';
+        return;
+      }
+      items.forEach(function (p) {
+        const team = teamById(p.teamId);
+        const resp = personaByEmail(p.responsable);
+        const barW = 'w-' + Math.round(p.avance / 10) * 10;
+        html += '<article class="dir-item" data-id="' + p.id + '">';
+        html += '<button class="dir-row" type="button">';
+        html += '<i class="tdot ' + teamColorClass(p.teamId) + '"></i>';
+        html += '<span class="dir-row-main">';
+        html += '<span class="dir-row-title">' + escapeHtml(p.nombre) + '</span>';
+        html += '<span class="dir-row-sub">' + team.icon + ' ' +
+          escapeHtml(team.corto) + ' · Resp.: ' +
+          escapeHtml(resp ? resp.nombre : p.responsable) +
+          ' · 👥 ' + p.personas.length + '</span>';
+        html += '</span>';
+        html += '<span class="dir-bar" title="Avance ' + p.avance + '%">' +
+          '<i class="' + barW + '"></i></span>';
+        html += '<span class="dir-pct">' + p.avance + '%</span>';
+        html += '<span class="estado ' + estadoClass(p.estado) + '">' +
+          escapeHtml(p.estado) + '</span>';
+        html += '<span class="dir-caret">▾</span>';
+        html += '</button>';
+        html += '<div class="dir-detail">';
+        if (p.descripcion) {
+          html += '<p class="dir-desc">' + escapeHtml(p.descripcion) + '</p>';
+        }
+        html += '<div class="pers-chips">' + p.personas.map(function (email) {
+          return personaChipHtml(email, email === p.responsable);
+        }).join('') + '</div>';
+        html += '</div></article>';
+      });
+      wrap.innerHTML = html;
+      wrap.querySelectorAll('.dir-item .dir-row').forEach(function (row) {
+        row.addEventListener('click', function () {
+          row.parentElement.classList.toggle('open');
+        });
+      });
+      return;
+    }
+
+    // Vista personas.
+    const personas = filteredPersonas();
+    if (!personas.length) {
+      wrap.innerHTML =
+        '<div class="empty"><span class="empty-icon">🔎</span>' +
+        'Sin resultados' +
+        (state.dirQuery ? ' para «' + escapeHtml(state.dirQuery) + '»' : '') +
+        '.</div>';
+      return;
+    }
+    personas.forEach(function (p) {
+      const team = teamById(p.teamId);
+      const proyectos = proyectosDePersona(p.email);
+      html += '<article class="dir-item">';
+      html += '<div class="dir-row persona">';
+      html += '<span class="avatar ' + avatarClass(p.nombre) + '">' +
+        escapeHtml(initials(p.nombre)) + '</span>';
+      html += '<span class="dir-row-main">';
+      html += '<span class="dir-row-title">' + escapeHtml(p.nombre) +
+        (p.email === USER.email ? ' <span class="me-tag">tú</span>' : '') +
+        '</span>';
+      html += '<span class="dir-row-sub">' + escapeHtml(p.rol) + ' · ' +
+        escapeHtml(p.email) + '</span>';
+      html += '</span>';
+      html += '<span class="pill team"><i class="tdot ' +
+        teamColorClass(p.teamId) + '"></i>' + team.icon + ' ' +
+        escapeHtml(team.corto) + '</span>';
+      html += '</div>';
+      if (proyectos.length) {
+        html += '<div class="dir-projchips">' + proyectos.map(function (x) {
+          return '<span class="proj-chip"><i class="tdot ' +
+            teamColorClass(x.teamId) + '"></i>' + escapeHtml(x.nombre) + '</span>';
+        }).join('') + '</div>';
+      }
+      html += '</article>';
+    });
+    wrap.innerHTML = html;
+  }
+
+  function renderDirectorio() {
+    if (!state.directorio) {
+      $('dirKpis').innerHTML = '';
+      $('dirList').innerHTML =
+        '<div class="empty"><span class="empty-icon">⏳</span>Cargando directorio…</div>';
+      loadDirectorio();
+      return;
+    }
+    $('dirViewProyectos').classList.toggle('active', state.dirView === 'proyectos');
+    $('dirViewPersonas').classList.toggle('active', state.dirView === 'personas');
+    renderDirKpis();
+    renderDirTeamChips();
+    renderDirList();
   }
 
   // ══════════════════════════════════ EQUIPO: FORMACIONES DEL EQUIPO ═══
@@ -1469,16 +1744,24 @@
 
   function activateHomeTab(tab) {
     state.homeTab = tab;
-    const isTeams = tab === 'teams';
-    $('tabTeams').classList.toggle('active', isTeams);
-    $('tabCalendar').classList.toggle('active', !isTeams);
-    $('tabTeams').setAttribute('aria-selected', String(isTeams));
-    $('tabCalendar').setAttribute('aria-selected', String(!isTeams));
-    $('viewTeams').hidden = !isTeams;
-    $('viewCalendar').hidden = isTeams;
-    if (!isTeams) {
+    const defs = [
+      { id: 'teams', btn: 'tabTeams', view: 'viewTeams' },
+      { id: 'calendar', btn: 'tabCalendar', view: 'viewCalendar' },
+      { id: 'dir', btn: 'tabDir', view: 'viewDir' }
+    ];
+    defs.forEach(function (d) {
+      const active = d.id === tab;
+      $(d.btn).classList.toggle('active', active);
+      $(d.btn).setAttribute('aria-selected', String(active));
+      $(d.view).hidden = !active;
+    });
+    if (tab === 'calendar') {
       renderCalendar();
       renderCalDetail();
+    }
+    if (tab === 'dir') {
+      renderDirectorio();
+      $('dirSearch').focus();
     }
   }
 
@@ -1601,7 +1884,29 @@
     $('tabCalendar').addEventListener('click', function () {
       activateHomeTab('calendar');
     });
+    $('tabDir').addEventListener('click', function () {
+      activateHomeTab('dir');
+    });
     renderTeamsGrid();
+
+    // Directorio de proyectos y personas.
+    $('dirSearch').addEventListener('input', function () {
+      state.dirQuery = $('dirSearch').value;
+      if (state.directorio) renderDirList();
+    });
+    $('dirViewProyectos').addEventListener('click', function () {
+      state.dirView = 'proyectos';
+      renderDirectorio();
+    });
+    $('dirViewPersonas').addEventListener('click', function () {
+      state.dirView = 'personas';
+      renderDirectorio();
+    });
+    $('btnLooker').addEventListener('click', function () {
+      vscode.postMessage({ type: 'openLooker' });
+      toast('↗ Abriendo el informe de Looker Studio en el navegador…');
+    });
+    loadDirectorio();
 
     // Calendario.
     $('calPrev').addEventListener('click', function () {

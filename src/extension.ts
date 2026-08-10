@@ -40,6 +40,15 @@ const MOCK_MODE = true;
  */
 const GOOGLE_AUTH_SCOPES = ['openid', 'email', 'profile'];
 
+/**
+ * Informe de Looker Studio del directorio de proyectos/personas del área.
+ * Se abre en el navegador desde la pestaña «Proyectos y personas» (dentro
+ * de un webview de VS Code el login de Google no funciona, así que el
+ * embed por iframe solo valdría si el informe permitiera acceso público).
+ */
+const LOOKER_STUDIO_URL =
+  'https://lookerstudio.google.com/reporting/502b7e84-019a-47c5-a670-39b6bc7b0b84/page/0o8qF';
+
 interface UserInfo {
   name: string;
   email: string;
@@ -159,6 +168,10 @@ function openPortalPanel(
           `KDD Portal (demo): aquí se abriría «${message.path}» desde la ruta local de la Knowledge Base.`
         );
       }
+      // Abre el informe original de Looker Studio en el navegador.
+      if (message.type === 'openLooker') {
+        void vscode.env.openExternal(vscode.Uri.parse(LOOKER_STUDIO_URL));
+      }
     },
     undefined,
     context.subscriptions
@@ -255,6 +268,8 @@ function getWebviewContent(
             aria-selected="true">🏦 Equipos</button>
           <button class="tab" id="tabCalendar" type="button" role="tab"
             aria-selected="false">🗓️ Calendario de formaciones</button>
+          <button class="tab" id="tabDir" type="button" role="tab"
+            aria-selected="false">📇 Proyectos y personas</button>
         </div>
 
         <!-- Vista: selección de equipo -->
@@ -315,6 +330,31 @@ function getWebviewContent(
             </div>
             <div class="cal-grid" id="calGrid"></div>
             <div class="cal-detail" id="calDetail"></div>
+          </div>
+        </div>
+
+        <!-- Vista: directorio de proyectos y personas (Looker/Sheets) -->
+        <div class="tab-view" id="viewDir" role="tabpanel" hidden>
+          <div class="dir-toolbar">
+            <div class="dir-search">
+              <span class="dir-search-icon">🔎</span>
+              <input id="dirSearch" type="text" autocomplete="off"
+                placeholder="Buscar por proyecto, equipo o persona…">
+            </div>
+            <div class="dir-switch">
+              <button class="chip-btn active" id="dirViewProyectos" type="button">Proyectos</button>
+              <button class="chip-btn" id="dirViewPersonas" type="button">Personas</button>
+            </div>
+          </div>
+          <div class="dir-teamchips" id="dirTeamChips"></div>
+          <div class="dir-scroll">
+            <div class="dir-kpis" id="dirKpis"></div>
+            <div class="dir-list" id="dirList"></div>
+          </div>
+          <div class="dir-foot">
+            <span class="dir-foot-note">Fuente (modo real): hojas «Proyectos» y
+              «Personas» vía Apps Script · informe original en Looker Studio</span>
+            <button class="btn ghost" id="btnLooker" type="button">Abrir en Looker Studio ↗</button>
           </div>
         </div>
       </section>

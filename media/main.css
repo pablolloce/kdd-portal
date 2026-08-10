@@ -1269,6 +1269,356 @@ body {
   color: var(--vscode-descriptionForeground);
 }
 
+/* ── Directorio de proyectos y personas ── */
+
+.chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 99px;
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.35));
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s;
+}
+
+.chip-btn:hover {
+  color: var(--vscode-foreground);
+  border-color: var(--vscode-focusBorder);
+}
+
+.chip-btn.active {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border-color: var(--vscode-button-background);
+  font-weight: 600;
+}
+
+.chip-btn.active .tdot {
+  outline: 1px solid var(--vscode-button-foreground);
+}
+
+.chip-btn:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.dir-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px 8px;
+}
+
+.dir-search {
+  position: relative;
+  flex: 1;
+}
+
+.dir-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+#dirSearch {
+  width: 100%;
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 7px 11px 7px 30px;
+  border-radius: 8px;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+}
+
+#dirSearch::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+#dirSearch:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.dir-switch {
+  display: flex;
+  gap: 5px;
+}
+
+.dir-teamchips {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 18px 10px;
+}
+
+.dir-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 18px 12px;
+}
+
+/* KPIs estilo dashboard */
+.dir-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 8px;
+  border-radius: 9px;
+  border: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.22));
+  background: var(--vscode-editor-background);
+}
+
+.kpi-num {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--vscode-charts-blue, #3794ff);
+}
+
+.kpi-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* Filas del listado */
+.dir-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dir-item {
+  border: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.22));
+  border-radius: 9px;
+  background: var(--vscode-editor-background);
+  overflow: hidden;
+  animation: msg-in 0.2s ease both;
+}
+
+.dir-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 13px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.dir-row.persona {
+  cursor: default;
+}
+
+.dir-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dir-row-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dir-row-sub {
+  font-size: 10.5px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.me-tag {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vscode-charts-green, #89d185);
+  border: 1px solid var(--vscode-charts-green, #89d185);
+  border-radius: 99px;
+  padding: 0 6px;
+  margin-left: 5px;
+  vertical-align: 1px;
+}
+
+/* Estado del proyecto */
+.estado {
+  flex: none;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 9px;
+  border-radius: 99px;
+  border: 1px solid transparent;
+}
+
+.estado.st-curso {
+  color: var(--vscode-charts-green, #89d185);
+  border-color: var(--vscode-charts-green, #89d185);
+}
+
+.estado.st-pausa {
+  color: var(--vscode-charts-yellow, #cca700);
+  border-color: var(--vscode-charts-yellow, #cca700);
+}
+
+.estado.st-cerrado {
+  color: var(--vscode-descriptionForeground);
+  border-color: var(--vscode-panel-border, rgba(127, 127, 127, 0.4));
+}
+
+/* Barra de avance (ancho por clases: CSP sin estilos inline) */
+.dir-bar {
+  flex: none;
+  width: 76px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.18));
+  overflow: hidden;
+}
+
+.dir-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--vscode-charts-blue, #3794ff);
+}
+
+.dir-bar .w-0 { width: 0; }
+.dir-bar .w-10 { width: 10%; }
+.dir-bar .w-20 { width: 20%; }
+.dir-bar .w-30 { width: 30%; }
+.dir-bar .w-40 { width: 40%; }
+.dir-bar .w-50 { width: 50%; }
+.dir-bar .w-60 { width: 60%; }
+.dir-bar .w-70 { width: 70%; }
+.dir-bar .w-80 { width: 80%; }
+.dir-bar .w-90 { width: 90%; }
+.dir-bar .w-100 { width: 100%; }
+
+.dir-pct {
+  flex: none;
+  width: 34px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-align: right;
+  color: var(--vscode-descriptionForeground);
+}
+
+.dir-caret {
+  flex: none;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  transition: transform 0.15s ease;
+}
+
+.dir-item.open .dir-caret {
+  transform: rotate(180deg);
+}
+
+/* Detalle expandible del proyecto */
+.dir-detail {
+  display: none;
+  padding: 0 13px 12px 33px;
+}
+
+.dir-item.open .dir-detail {
+  display: block;
+}
+
+.dir-desc {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 8px;
+}
+
+.pers-chips,
+.dir-projchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dir-projchips {
+  padding: 0 13px 11px 13px;
+}
+
+.pers-chip,
+.proj-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  padding: 3px 10px 3px 4px;
+  border-radius: 99px;
+  border: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.3));
+  background: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.08));
+}
+
+.proj-chip {
+  padding: 3px 10px;
+}
+
+.pers-chip.resp {
+  border-color: var(--vscode-charts-blue, #3794ff);
+}
+
+.avatar.mini {
+  width: 18px;
+  height: 18px;
+  font-size: 8px;
+}
+
+.dir-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 18px;
+  border-top: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.18));
+}
+
+.dir-foot-note {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+}
+
 /* ── Barra superior de la pantalla de equipo ── */
 
 .team-bar {
