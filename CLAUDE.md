@@ -122,7 +122,8 @@ real da 27.687,25 h). Sin SDATOOL → usar `non_sda_project` como proyecto
 
 ## Historia del repositorio
 
-Los 11 primeros commits se desarrollaron en una sesión de Claude Code sin
+Los 12 primeros commits se desarrollaron en una sesión de Claude Code sin
 permiso de escritura y llegaron a GitHub vía `git bundle` empujado por el
-usuario desde su máquina (Windows, Git Bash). Si el remoto está vacío o
-incompleto, pedirle el bundle o el zip de fuentes más reciente.
+usuario desde su máquina (Windows, Git Bash). Desde entonces **`main` es
+la rama por defecto (y única) del remoto**: trabajar y pushear
+directamente sobre ella salvo que el usuario pida otra cosa.
