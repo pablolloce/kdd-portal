@@ -9,7 +9,7 @@
  *    - chat.gs         → chat ↔ correo del Google Group de cada equipo
  *    - formaciones.gs  → Sheets + Calendar + aviso al grupo
  *    - kb.gs           → índice y descarga de la Knowledge Base desde Drive
- *    - directorio.gs   → proyectos y personas (origen del Looker Studio)
+ *    - tra.gs          → informe TRA de imputaciones (origen del Looker)
  *
  *  CÓMO DESPLEGAR
  *  ──────────────
@@ -33,7 +33,7 @@
  *   GET  ?action=getUserInfo&email=…          → { team }
  *   GET  ?action=getChat&team=…               → { messages[] }
  *   GET  ?action=getFormaciones&email=…       → { formaciones[] } (globales)
- *   GET  ?action=getDirectorio                → { personas[], proyectos[] }
+ *   GET  ?action=getTra                       → { rows[] } (informe TRA)
  *   GET  ?action=getKbIndex&team=…            → { files[] }  (KB en Drive)
  *   GET  ?action=getKbFile&team=…&fileId=…    → { file: {name,path,content} }
  *   POST {action:'sendMessage', team, name, email, text}
@@ -54,8 +54,8 @@ function doGet(e) {
         return jsonOut_({ ok: true, messages: getChat_(requireTeam_(p.team)) });
       case 'getFormaciones':
         return jsonOut_({ ok: true, formaciones: getFormaciones_(p.email) });
-      case 'getDirectorio':
-        return jsonOut_(Object.assign({ ok: true }, getDirectorio_()));
+      case 'getTra':
+        return jsonOut_(Object.assign({ ok: true }, getTra_()));
       case 'getKbIndex':
         return jsonOut_({ ok: true, files: getKbIndex_(requireTeam_(p.team)) });
       case 'getKbFile':

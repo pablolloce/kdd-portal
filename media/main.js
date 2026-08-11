@@ -520,32 +520,48 @@
     });
 
     /**
-     * Directorio de proyectos y personas del área (en real: hojas
-     * "Proyectos" y "Personas" del spreadsheet + informe de Looker Studio).
+     * Imputaciones del informe TRA (réplica del Looker Studio del área).
+     * En real: Google Sheets «Informe TRA Portal» (hoja PORTAL, se
+     * actualiza a diario) leído por Apps Script (action=getTra).
+     *
+     * Cada fila: [nombre, equipo, sdatool, featureJira, descripcion, minutos]
+     * (el tiempo viene en MINUTOS, igual que la hoja real; la UI lo pasa a
+     * horas). Los equipos y personas de este informe NO son los del portal:
+     * es información complementaria y no todo el área aparece aquí.
      */
-    const PERSONAS = [
-      { email: USER.email, nombre: USER.name, teamId: MOCK_USER_TEAM, rol: 'Desarrolladora' },
-      { email: 'lucia.ferrer@banco.demo', nombre: 'Lucía Ferrer', teamId: 'front-office', rol: 'Tech Lead' },
-      { email: 'marcos.pena@banco.demo', nombre: 'Marcos Peña', teamId: 'front-office', rol: 'Desarrollador' },
-      { email: 'irene.solano@banco.demo', nombre: 'Irene Solano', teamId: 'front-office', rol: 'Analista funcional' },
-      { email: 'nuria.campos@banco.demo', nombre: 'Nuria Campos', teamId: 'liquidez', rol: 'Tech Lead' },
-      { email: 'oscar.molina@banco.demo', nombre: 'Óscar Molina', teamId: 'liquidez', rol: 'Desarrollador' },
-      { email: 'paula.nunez@banco.demo', nombre: 'Paula Núñez', teamId: 'riesgos', rol: 'Tech Lead · Quant' },
-      { email: 'andres.vega@banco.demo', nombre: 'Andrés Vega', teamId: 'riesgos', rol: 'Desarrollador' },
-      { email: 'clara.ibanez@banco.demo', nombre: 'Clara Ibáñez', teamId: 'riesgos', rol: 'Analista de datos' },
-      { email: 'sergio.lara@banco.demo', nombre: 'Sergio Lara', teamId: 'back-office', rol: 'Tech Lead' },
-      { email: 'eva.duarte@banco.demo', nombre: 'Eva Duarte', teamId: 'back-office', rol: 'Analista funcional' }
-    ];
-
-    const PROYECTOS = [
-      { id: 'p-mx361', nombre: 'Migración Murex a MX.3.61', teamId: 'front-office', estado: 'En curso', avance: 65, responsable: 'lucia.ferrer@banco.demo', descripcion: 'Upgrade de la plataforma de negociación y regresión completa de pricers.', personas: ['lucia.ferrer@banco.demo', 'marcos.pena@banco.demo', USER.email, 'irene.solano@banco.demo'] },
-      { id: 'p-blotter', nombre: 'Blotter FX v2', teamId: 'front-office', estado: 'En curso', avance: 30, responsable: 'marcos.pena@banco.demo', descripcion: 'Nuevo blotter en tiempo real para la mesa de divisa.', personas: ['marcos.pena@banco.demo', USER.email] },
-      { id: 'p-iso', nombre: 'ISO 20022 · Fase 2 (pacs/camt)', teamId: 'liquidez', estado: 'En curso', avance: 80, responsable: 'oscar.molina@banco.demo', descripcion: 'Migración de pagos y extractos al esquema MX.', personas: ['oscar.molina@banco.demo', 'nuria.campos@banco.demo', 'sergio.lara@banco.demo'] },
-      { id: 'p-dashliq', nombre: 'Dashboard de liquidez intradía', teamId: 'liquidez', estado: 'En pausa', avance: 45, responsable: 'nuria.campos@banco.demo', descripcion: 'Visualización del buffer y de la previsión intradía por divisa.', personas: ['nuria.campos@banco.demo', 'clara.ibanez@banco.demo'] },
-      { id: 'p-varclima', nombre: 'VaR · escenarios climáticos', teamId: 'riesgos', estado: 'En curso', avance: 20, responsable: 'paula.nunez@banco.demo', descripcion: 'Incorporación del riesgo climático al juego de escenarios de estrés.', personas: ['paula.nunez@banco.demo', 'andres.vega@banco.demo', 'clara.ibanez@banco.demo'] },
-      { id: 'p-limv2', nombre: 'Límites intradía v2', teamId: 'riesgos', estado: 'Cerrado', avance: 100, responsable: 'andres.vega@banco.demo', descripcion: 'Monitor de excesos con alertas en tiempo real.', personas: ['andres.vega@banco.demo'] },
-      { id: 'p-camt', nombre: 'Conciliación camt.053', teamId: 'back-office', estado: 'En curso', avance: 55, responsable: 'eva.duarte@banco.demo', descripcion: 'Sustitución de MT940 por camt.053 en la conciliación de nostros.', personas: ['eva.duarte@banco.demo', 'sergio.lara@banco.demo'] },
-      { id: 'p-matchmx', nombre: 'Matching de confirmaciones MX', teamId: 'back-office', estado: 'En curso', avance: 10, responsable: 'sergio.lara@banco.demo', descripcion: 'Adaptación del matching a los mensajes semt/seev de ISO 20022.', personas: ['sergio.lara@banco.demo', 'eva.duarte@banco.demo', 'irene.solano@banco.demo'] }
+    const TRA_ROWS = [
+      ['MARIO CANO LOSADA', 'FO-Murex', 'SDATOOL-34546', 'CIBMUREX3-9788', 'Desarrollos Estructuras Subfase 2 - Murex Trading', 14040],
+      ['ANA BELÉN RUIZ MOLINA', 'FO-Murex', 'SDATOOL-34546', 'CIBMUREX3-9274', 'Desarrollos Estructuras Subfase 2 - Murex Reporting', 10380],
+      ['COSME DELGADO PRIETO', 'FO-Murex', 'SDATOOL-34546', 'CIBMUREX3-138', '[SDA_34546] Murex batch Calypso OTC Fase 4 [Mx-Reporting]', 8220],
+      ['NOELIA PARDO GIL', 'STAR', 'SDATOOL-34546', 'CIBSTAR-560', '[SDATOOL-34546 MMF: 2301724] Restricción de envío a Abaco: Filtro de estructuras Calypso', 6480],
+      ['DANIEL ORTS PLA', 'MSC', 'SDATOOL-34546', 'CIBMARKETM-1659', '[SDATOOL_34546/1081305] MSC - Fase IV - Migración productos IRS y CCIRS', 5940],
+      ['PEDRO ALARCÓN NIETO', 'Calypso', 'SDATOOL-49699', 'CIBCALYPS1-3781', 'Calypso OTC Fase V - Assessment Payoffs Multitrigger', 16920],
+      ['SILVIA MORA GALLEGO', 'Calypso', 'SDATOOL-49699', 'CIBCALYPS1-3900', 'Upgrade Calypso 18 - regresión de módulos OTC', 12540],
+      ['MARIO CANO LOSADA', 'FO-Murex', 'SDATOOL-49699', 'CIBCALYPS1-3781', 'Calypso OTC Fase V - Assessment Payoffs Multitrigger', 4980],
+      ['TERESA LLANOS VEGA', 'Transaction_Reporting', 'SDATOOL-34723', 'CIBTRADEREP-421', 'Transaction Reporting EMIR Refit - ajustes de esquema', 12360],
+      ['IVÁN CASTRO REY', 'Transaction_Reporting', 'SDATOOL-34723', 'CIBTRADEREP-577', 'RTS 22 - incorporación de campos nuevos', 9420],
+      ['ÁLVARO CID BLANCO', 'FRTB-RFR', 'SDATOOL-51125', 'CIBFRTB-118', 'Motor FRTB-RFR: construcción de curvas libres de riesgo', 11640],
+      ['ROCÍO MARÍN SOTO', 'FRTB-RFR', 'SDATOOL-51125', 'CIBFRTB-201', 'FRTB SA - agregación de sensibilidades por bucket', 7080],
+      ['LAURA VILA ARNAIZ', 'FO-Murex', 'SDATOOL-30916', 'CIBFRONT2B-4766', 'Eventos en 4Sight para optimización de interfaces', 9660],
+      ['GONZALO URBINA SANZ', 'DUCO', 'SDATOOL-55415', 'CIBDUCO-543', 'SDATOOL-55415/MMF 2167498 ALCON PnL Cambio del dataplatform', 11160],
+      ['JORGE ABAD LUNA', 'RDR', 'SDATOOL-42831', 'CIBGLOBALD-3085', 'DMT PAWIF Q2 Back', 8760],
+      ['JORGE ABAD LUNA', 'RDR', 'SDATOOL-42831', 'CIBGLOBALD-3084', 'DMT PAWIF Q2 Front', 3540],
+      ['CARMEN SOLÍS VERA', 'TS', 'SDATOOL-49874', 'CIBMONITOR-35', '[SDATOOL-49874 MMF: 2299964] - Migración NOVA - Servicio Mifid', 13560],
+      ['NOELIA PARDO GIL', 'STAR', 'SDATOOL-52547', 'CIBSTAR-712', 'STAR - conciliación intradía de operaciones', 10920],
+      ['ELSA GARCÍA COBO', 'Integraciones ESB', 'SDATOOL-52547', 'CIBESB-1204', 'Integración ESB - colas de eventos STAR', 6360],
+      ['SILVIA MORA GALLEGO', 'Calypso', 'SDATOOL-45247', 'CIBMUREX3-12194', '[Murex RISK] - CMT Callable - Análisis de requerimientos', 5220],
+      ['TERESA LLANOS VEGA', 'Transaction_Reporting', 'SDATOOL-49629', 'CIBTRADEREP-610', 'Reporting MiFIR - reconciliación con front', 4680],
+      ['ÁLVARO CID BLANCO', 'FRTB-RFR', 'SDATOOL-49629', 'CIBFRTB-233', 'Backtesting FRTB - informes de excepciones', 3120],
+      ['ELSA GARCÍA COBO', 'Integraciones ESB', '', '', 'Soporte usuarios', 7440],
+      ['CARMEN SOLÍS VERA', 'TS', '', '', 'Soporte usuarios', 4980],
+      ['COSME DELGADO PRIETO', 'FO-Murex', '', '', 'Soporte usuarios', 3900],
+      ['GONZALO URBINA SANZ', 'DUCO', '', '', 'Soporte usuarios', 2340],
+      ['IVÁN CASTRO REY', 'Transaction_Reporting', 'SDATOOL-55569', 'CIBTRADEREP-702', 'Refit fase II - validaciones de contrapartida', 6900],
+      ['ROCÍO MARÍN SOTO', 'FRTB-RFR', 'SDATOOL-55569', 'CIBFRTB-260', 'Curvas RFR - calibración con datos de mercado', 4740],
+      ['LAURA VILA ARNAIZ', 'FO-Murex', 'SDATOOL-55569', 'CIBMUREX3-12630', 'Mx - adaptación de interfaces a curvas RFR', 5160],
+      ['ANA BELÉN RUIZ MOLINA', 'FO-Murex', 'SDATOOL-45247', 'CIBMUREX3-12201', '[Murex RISK] - CMT Callable - desarrollo de pricers', 4380],
+      ['PEDRO ALARCÓN NIETO', 'Calypso', 'SDATOOL-52547', 'CIBCALYPS1-4012', 'Calypso - alimentación de la conciliación STAR', 3960],
+      ['DANIEL ORTS PLA', 'MSC', 'SDATOOL-49874', 'CIBMONITOR-41', 'Migración NOVA - monitorización de servicios', 4500]
     ];
 
     function flushScheduled(store) {
@@ -692,13 +708,10 @@
         return { ok: true, answer: result.answer, sources: result.sources };
       },
 
-      getDirectorio: function () {
+      getTra: function () {
         return {
           ok: true,
-          personas: PERSONAS.slice(),
-          proyectos: PROYECTOS.map(function (p) {
-            return Object.assign({}, p, { personas: p.personas.slice() });
-          })
+          rows: TRA_ROWS.map(function (row) { return row.slice(); })
         };
       }
     };
@@ -735,8 +748,8 @@
           // En modo real esta acción NO va a Apps Script: usará la
           // Language Model API (Copilot) desde la extensión.
           return MockBackend.kbAsk(teamId, payload);
-        case 'getDirectorio':
-          return MockBackend.getDirectorio();
+        case 'getTra':
+          return MockBackend.getTra();
         default:
           return { ok: false, error: 'Acción desconocida: ' + action };
       }
@@ -774,12 +787,12 @@
     screen: 'home',
     /** Pestaña del menú: 'teams' | 'calendar' | 'dir'. */
     homeTab: 'teams',
-    /** Directorio de proyectos/personas (se carga con getDirectorio). */
-    directorio: null,
+    /** Filas del informe TRA (se cargan con getTra). */
+    tra: null,
+    /** true una vez pobladas las listas de los filtros. */
+    traFiltersReady: false,
     dirQuery: '',
-    dirTeam: 'all',
-    /** Vista del directorio: 'proyectos' | 'personas'. */
-    dirView: 'proyectos',
+    traFilters: { nombre: '', equipo: '', sda: '', jira: '' },
     /** Pestaña dentro del equipo: 'kb' | 'chat'. */
     teamTab: 'kb',
     /** teamId → true una vez aceptado el aviso del chat. */
@@ -1029,20 +1042,21 @@
     attachRsvpHandlers(wrap);
   }
 
-  // ═══════════════════════ MENÚ: DIRECTORIO DE PROYECTOS Y PERSONAS ═══
-  //  Réplica navegable del informe de Looker Studio del área: búsqueda
-  //  libre + filtro por equipo, en dos vistas (proyectos / personas).
-  //  En real se alimenta de las hojas "Proyectos" y "Personas" vía
-  //  Apps Script (action=getDirectorio); el botón inferior abre el
-  //  informe original de Looker Studio en el navegador.
+  // ══════════════ MENÚ: PROYECTOS Y PERSONAS (informe TRA / Looker) ═══
+  //  Réplica del Looker Studio de imputaciones: total de horas, donut de
+  //  proyectos por tiempo, filtros (Nombre / Equipo / Proyecto SDA /
+  //  Feature JIRA) y tablas de personas y proyectos, todo interconectado.
+  //  Filas: [nombre, equipo, sdatool, featureJira, descripcion, minutos].
 
-  async function loadDirectorio() {
+  const TRA = { NOMBRE: 0, EQUIPO: 1, SDA: 2, JIRA: 3, DESC: 4, MIN: 5 };
+
+  async function loadTra() {
     try {
-      const data = await api('getDirectorio');
+      const data = await api('getTra');
       if (data && data.ok) {
-        state.directorio = { personas: data.personas, proyectos: data.proyectos };
+        state.tra = data.rows;
         if (state.screen === 'home' && state.homeTab === 'dir') {
-          renderDirectorio();
+          renderTra();
         }
       }
     } catch (err) {
@@ -1050,211 +1064,252 @@
     }
   }
 
-  function personaByEmail(email) {
-    if (!state.directorio) return null;
-    return state.directorio.personas.find(function (p) {
-      return p.email === email;
-    }) || null;
-  }
-
-  function proyectosDePersona(email) {
-    if (!state.directorio) return [];
-    return state.directorio.proyectos.filter(function (p) {
-      return p.personas.indexOf(email) !== -1;
+  /** Minutos → horas con formato es-ES (27.687,25). */
+  function fmtHoras(minutos) {
+    return (minutos / 60).toLocaleString('es-ES', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     });
   }
 
-  function estadoClass(estado) {
-    if (estado === 'En curso') return 'st-curso';
-    if (estado === 'En pausa') return 'st-pausa';
-    return 'st-cerrado';
+  /** Etiqueta del proyecto de una fila (SDATOOL o proyecto sin SDA). */
+  function traSdaLabel(row) {
+    return row[TRA.SDA] || row[TRA.DESC] || 'Sin proyecto';
   }
 
-  function filteredProyectos() {
+  function filteredTraRows() {
+    const f = state.traFilters;
     const q = normalize(state.dirQuery);
-    return state.directorio.proyectos.filter(function (p) {
-      if (state.dirTeam !== 'all' && p.teamId !== state.dirTeam) return false;
+    return state.tra.filter(function (row) {
+      if (f.nombre && row[TRA.NOMBRE] !== f.nombre) return false;
+      if (f.equipo && row[TRA.EQUIPO] !== f.equipo) return false;
+      if (f.sda && traSdaLabel(row) !== f.sda) return false;
+      if (f.jira && row[TRA.JIRA] !== f.jira) return false;
       if (!q) return true;
-      const team = teamById(p.teamId);
-      const nombres = p.personas.map(function (email) {
-        const per = personaByEmail(email);
-        return per ? per.nombre + ' ' + per.rol : email;
-      }).join(' ');
-      return normalize(
-        p.nombre + ' ' + p.estado + ' ' + (p.descripcion || '') + ' ' +
-        team.nombre + ' ' + team.corto + ' ' + nombres
-      ).indexOf(q) !== -1;
+      return normalize(row.join(' ')).indexOf(q) !== -1;
     });
   }
 
-  function filteredPersonas() {
-    const q = normalize(state.dirQuery);
-    return state.directorio.personas.filter(function (p) {
-      if (state.dirTeam !== 'all' && p.teamId !== state.dirTeam) return false;
-      if (!q) return true;
-      const team = teamById(p.teamId);
-      const proyectos = proyectosDePersona(p.email)
-        .map(function (x) { return x.nombre; }).join(' ');
-      return normalize(
-        p.nombre + ' ' + p.rol + ' ' + p.email + ' ' +
-        team.nombre + ' ' + team.corto + ' ' + proyectos
-      ).indexOf(q) !== -1;
-    });
-  }
+  /** Rellena los desplegables de filtros con los valores del dataset. */
+  function populateTraFilters() {
+    if (state.traFiltersReady) return;
+    state.traFiltersReady = true;
 
-  function renderDirKpis() {
-    const dir = state.directorio;
-    const enCurso = dir.proyectos.filter(function (p) {
-      return p.estado === 'En curso';
-    }).length;
-    $('dirKpis').innerHTML =
-      '<div class="kpi"><span class="kpi-num">' + dir.proyectos.length +
-      '</span><span class="kpi-label">Proyectos</span></div>' +
-      '<div class="kpi"><span class="kpi-num">' + enCurso +
-      '</span><span class="kpi-label">En curso</span></div>' +
-      '<div class="kpi"><span class="kpi-num">' + dir.personas.length +
-      '</span><span class="kpi-label">Personas</span></div>' +
-      '<div class="kpi"><span class="kpi-num">' + TEAMS.length +
-      '</span><span class="kpi-label">Equipos</span></div>';
-  }
+    function fill(id, values, todos) {
+      const select = $(id);
+      select.innerHTML =
+        '<option value="">' + todos + '</option>' +
+        values.map(function (v) {
+          return '<option value="' + escapeHtml(v) + '">' +
+            escapeHtml(v) + '</option>';
+        }).join('');
+    }
 
-  function renderDirTeamChips() {
-    const box = $('dirTeamChips');
-    let html =
-      '<button class="chip-btn' + (state.dirTeam === 'all' ? ' active' : '') +
-      '" type="button" data-team="all">Todos</button>';
-    TEAMS.forEach(function (team) {
-      html +=
-        '<button class="chip-btn' + (state.dirTeam === team.id ? ' active' : '') +
-        '" type="button" data-team="' + team.id + '">' +
-        '<i class="tdot ' + teamColorClass(team.id) + '"></i>' +
-        escapeHtml(team.corto) + '</button>';
-    });
-    box.innerHTML = html;
-    box.querySelectorAll('.chip-btn').forEach(function (chip) {
-      chip.addEventListener('click', function () {
-        state.dirTeam = chip.getAttribute('data-team');
-        renderDirectorio();
+    function uniqueSorted(mapFn) {
+      const set = {};
+      state.tra.forEach(function (row) {
+        const value = mapFn(row);
+        if (value) set[value] = true;
       });
+      return Object.keys(set).sort(function (a, b) {
+        return a.localeCompare(b, 'es');
+      });
+    }
+
+    fill('fNombre', uniqueSorted(function (r) { return r[TRA.NOMBRE]; }), 'Todos');
+    fill('fEquipo', uniqueSorted(function (r) { return r[TRA.EQUIPO]; }), 'Todos');
+    fill('fSda', uniqueSorted(traSdaLabel), 'Todos');
+    fill('fJira', uniqueSorted(function (r) { return r[TRA.JIRA]; }), 'Todas');
+  }
+
+  function resetTraFilters() {
+    state.traFilters = { nombre: '', equipo: '', sda: '', jira: '' };
+    state.dirQuery = '';
+    $('dirSearch').value = '';
+    $('fNombre').value = '';
+    $('fEquipo').value = '';
+    $('fSda').value = '';
+    $('fJira').value = '';
+    renderTraResults();
+  }
+
+  /** Colores del donut (variables del tema, con fallback). */
+  function traChartColors() {
+    const styles = getComputedStyle(document.documentElement);
+    function v(name, fallback) {
+      return (styles.getPropertyValue(name) || '').trim() || fallback;
+    }
+    return [
+      v('--vscode-charts-blue', '#3794ff'),
+      v('--vscode-charts-purple', '#b180d7'),
+      v('--vscode-charts-green', '#89d185'),
+      v('--vscode-charts-orange', '#d18616'),
+      v('--vscode-descriptionForeground', '#9d9d9d')
+    ];
+  }
+
+  /** Donut «proyectos imputados por tiempo»: top 4 SDATOOL + Otros. */
+  function renderTraChart(rows, totalMin) {
+    const porSda = {};
+    rows.forEach(function (row) {
+      const key = traSdaLabel(row);
+      porSda[key] = (porSda[key] || 0) + row[TRA.MIN];
     });
+    const orden = Object.keys(porSda).sort(function (a, b) {
+      return porSda[b] - porSda[a];
+    });
+    const top = orden.slice(0, 4).map(function (key) {
+      return { label: key, min: porSda[key] };
+    });
+    const restoMin = orden.slice(4).reduce(function (acc, key) {
+      return acc + porSda[key];
+    }, 0);
+    if (restoMin > 0) {
+      top.push({ label: 'Otros', min: restoMin });
+    }
+
+    const canvas = $('traDonut');
+    const ctx = canvas.getContext('2d');
+    const colors = traChartColors();
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const radio = Math.min(cx, cy) - 4;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let angulo = -Math.PI / 2;
+    top.forEach(function (parte, i) {
+      const frac = totalMin ? parte.min / totalMin : 0;
+      const fin = angulo + frac * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, radio, angulo, fin);
+      ctx.closePath();
+      ctx.fillStyle = colors[i % colors.length];
+      ctx.fill();
+      angulo = fin;
+    });
+    // Agujero del donut (recorte al color de fondo del panel).
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    ctx.arc(cx, cy, radio * 0.62, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+
+    $('traLegend').innerHTML = top.map(function (parte, i) {
+      const pct = totalMin
+        ? ((100 * parte.min) / totalMin).toLocaleString('es-ES', {
+            minimumFractionDigits: 1, maximumFractionDigits: 1
+          })
+        : '0';
+      return (
+        '<span class="tra-leg"><i class="leg-c' + (i % 5) + '"></i>' +
+        escapeHtml(parte.label) + ' · ' + pct + '%</span>'
+      );
+    }).join('');
   }
 
-  function personaChipHtml(email, responsable) {
-    const per = personaByEmail(email);
-    const nombre = per ? per.nombre : email;
-    return (
-      '<span class="pers-chip' + (responsable ? ' resp' : '') + '">' +
-      '<span class="avatar mini ' + avatarClass(nombre) + '">' +
-      escapeHtml(initials(nombre)) + '</span>' +
-      escapeHtml(nombre) + (responsable ? ' ★' : '') + '</span>'
-    );
-  }
+  /** Recalcula KPIs, donut y tablas con los filtros activos. */
+  function renderTraResults() {
+    const rows = filteredTraRows();
+    const totalMin = rows.reduce(function (acc, row) {
+      return acc + row[TRA.MIN];
+    }, 0);
 
-  function renderDirList() {
-    const wrap = $('dirList');
-    let html = '';
-
-    if (state.dirView === 'proyectos') {
-      const items = filteredProyectos();
-      if (!items.length) {
-        wrap.innerHTML =
-          '<div class="empty"><span class="empty-icon">🔎</span>' +
-          'Sin resultados' +
-          (state.dirQuery ? ' para «' + escapeHtml(state.dirQuery) + '»' : '') +
-          '.</div>';
-        return;
+    // Agregado por persona.
+    const porPersona = {};
+    rows.forEach(function (row) {
+      const key = row[TRA.NOMBRE];
+      if (!porPersona[key]) {
+        porPersona[key] = { nombre: key, equipo: row[TRA.EQUIPO], min: 0 };
       }
-      items.forEach(function (p) {
-        const team = teamById(p.teamId);
-        const resp = personaByEmail(p.responsable);
-        const barW = 'w-' + Math.round(p.avance / 10) * 10;
-        html += '<article class="dir-item" data-id="' + p.id + '">';
-        html += '<button class="dir-row" type="button">';
-        html += '<i class="tdot ' + teamColorClass(p.teamId) + '"></i>';
-        html += '<span class="dir-row-main">';
-        html += '<span class="dir-row-title">' + escapeHtml(p.nombre) + '</span>';
-        html += '<span class="dir-row-sub">' + team.icon + ' ' +
-          escapeHtml(team.corto) + ' · Resp.: ' +
-          escapeHtml(resp ? resp.nombre : p.responsable) +
-          ' · 👥 ' + p.personas.length + '</span>';
-        html += '</span>';
-        html += '<span class="dir-bar" title="Avance ' + p.avance + '%">' +
-          '<i class="' + barW + '"></i></span>';
-        html += '<span class="dir-pct">' + p.avance + '%</span>';
-        html += '<span class="estado ' + estadoClass(p.estado) + '">' +
-          escapeHtml(p.estado) + '</span>';
-        html += '<span class="dir-caret">▾</span>';
-        html += '</button>';
-        html += '<div class="dir-detail">';
-        if (p.descripcion) {
-          html += '<p class="dir-desc">' + escapeHtml(p.descripcion) + '</p>';
-        }
-        html += '<div class="pers-chips">' + p.personas.map(function (email) {
-          return personaChipHtml(email, email === p.responsable);
-        }).join('') + '</div>';
-        html += '</div></article>';
-      });
-      wrap.innerHTML = html;
-      wrap.querySelectorAll('.dir-item .dir-row').forEach(function (row) {
-        row.addEventListener('click', function () {
-          row.parentElement.classList.toggle('open');
-        });
-      });
-      return;
-    }
-
-    // Vista personas.
-    const personas = filteredPersonas();
-    if (!personas.length) {
-      wrap.innerHTML =
-        '<div class="empty"><span class="empty-icon">🔎</span>' +
-        'Sin resultados' +
-        (state.dirQuery ? ' para «' + escapeHtml(state.dirQuery) + '»' : '') +
-        '.</div>';
-      return;
-    }
-    personas.forEach(function (p) {
-      const team = teamById(p.teamId);
-      const proyectos = proyectosDePersona(p.email);
-      html += '<article class="dir-item">';
-      html += '<div class="dir-row persona">';
-      html += '<span class="avatar ' + avatarClass(p.nombre) + '">' +
-        escapeHtml(initials(p.nombre)) + '</span>';
-      html += '<span class="dir-row-main">';
-      html += '<span class="dir-row-title">' + escapeHtml(p.nombre) +
-        (p.email === USER.email ? ' <span class="me-tag">tú</span>' : '') +
-        '</span>';
-      html += '<span class="dir-row-sub">' + escapeHtml(p.rol) + ' · ' +
-        escapeHtml(p.email) + '</span>';
-      html += '</span>';
-      html += '<span class="pill team"><i class="tdot ' +
-        teamColorClass(p.teamId) + '"></i>' + team.icon + ' ' +
-        escapeHtml(team.corto) + '</span>';
-      html += '</div>';
-      if (proyectos.length) {
-        html += '<div class="dir-projchips">' + proyectos.map(function (x) {
-          return '<span class="proj-chip"><i class="tdot ' +
-            teamColorClass(x.teamId) + '"></i>' + escapeHtml(x.nombre) + '</span>';
-        }).join('') + '</div>';
-      }
-      html += '</article>';
+      porPersona[key].min += row[TRA.MIN];
     });
-    wrap.innerHTML = html;
+    const personas = Object.keys(porPersona).map(function (k) {
+      return porPersona[k];
+    }).sort(function (a, b) { return b.min - a.min; });
+
+    // Agregado por proyecto (SDATOOL + feature).
+    const porProyecto = {};
+    rows.forEach(function (row) {
+      const key = traSdaLabel(row) + '|' + row[TRA.JIRA];
+      if (!porProyecto[key]) {
+        porProyecto[key] = {
+          sda: traSdaLabel(row),
+          jira: row[TRA.JIRA],
+          desc: row[TRA.DESC],
+          min: 0
+        };
+      }
+      porProyecto[key].min += row[TRA.MIN];
+    });
+    const proyectos = Object.keys(porProyecto).map(function (k) {
+      return porProyecto[k];
+    }).sort(function (a, b) { return b.min - a.min; });
+
+    // KPIs.
+    $('traTotal').textContent = fmtHoras(totalMin);
+    $('traPersonas').textContent = '👥 ' + personas.length + ' personas';
+    $('traProyectos').textContent = '📁 ' + proyectos.length + ' proyectos';
+    $('cntPersonas').textContent = personas.length ? '(' + personas.length + ')' : '';
+    $('cntProyectos').textContent = proyectos.length ? '(' + proyectos.length + ')' : '';
+
+    renderTraChart(rows, totalMin);
+
+    // Tabla de personas (clic en fila → filtra por ese nombre).
+    const tbodyPersonas = $('tblPersonas').querySelector('tbody');
+    tbodyPersonas.innerHTML = personas.length
+      ? personas.map(function (p) {
+          return (
+            '<tr data-nombre="' + escapeHtml(p.nombre) + '" ' +
+            'title="Filtrar por ' + escapeHtml(p.nombre) + '">' +
+            '<td>' + escapeHtml(p.nombre) + '</td>' +
+            '<td>' + escapeHtml(p.equipo) + '</td>' +
+            '<td class="num">' + fmtHoras(p.min) + '</td></tr>'
+          );
+        }).join('')
+      : '<tr><td colspan="3" class="tra-empty">Sin resultados</td></tr>';
+    tbodyPersonas.querySelectorAll('tr[data-nombre]').forEach(function (tr) {
+      tr.addEventListener('click', function () {
+        const nombre = tr.getAttribute('data-nombre');
+        state.traFilters.nombre =
+          state.traFilters.nombre === nombre ? '' : nombre;
+        $('fNombre').value = state.traFilters.nombre;
+        renderTraResults();
+      });
+    });
+
+    // Tabla de proyectos (clic en fila → filtra por ese SDATOOL).
+    const tbodyProyectos = $('tblProyectos').querySelector('tbody');
+    tbodyProyectos.innerHTML = proyectos.length
+      ? proyectos.map(function (p) {
+          return (
+            '<tr data-sda="' + escapeHtml(p.sda) + '" ' +
+            'title="Filtrar por ' + escapeHtml(p.sda) + '">' +
+            '<td class="mono">' + escapeHtml(p.sda) + '</td>' +
+            '<td class="mono">' + escapeHtml(p.jira || '—') + '</td>' +
+            '<td class="tra-desc">' + escapeHtml(p.desc) + '</td>' +
+            '<td class="num">' + fmtHoras(p.min) + '</td></tr>'
+          );
+        }).join('')
+      : '<tr><td colspan="4" class="tra-empty">Sin resultados</td></tr>';
+    tbodyProyectos.querySelectorAll('tr[data-sda]').forEach(function (tr) {
+      tr.addEventListener('click', function () {
+        const sda = tr.getAttribute('data-sda');
+        state.traFilters.sda = state.traFilters.sda === sda ? '' : sda;
+        $('fSda').value = state.traFilters.sda;
+        renderTraResults();
+      });
+    });
   }
 
-  function renderDirectorio() {
-    if (!state.directorio) {
-      $('dirKpis').innerHTML = '';
-      $('dirList').innerHTML =
-        '<div class="empty"><span class="empty-icon">⏳</span>Cargando directorio…</div>';
-      loadDirectorio();
+  function renderTra() {
+    if (!state.tra) {
+      $('traTotal').textContent = '…';
+      loadTra();
       return;
     }
-    $('dirViewProyectos').classList.toggle('active', state.dirView === 'proyectos');
-    $('dirViewPersonas').classList.toggle('active', state.dirView === 'personas');
-    renderDirKpis();
-    renderDirTeamChips();
-    renderDirList();
+    populateTraFilters();
+    renderTraResults();
   }
 
   // ══════════════════════════════════ EQUIPO: FORMACIONES DEL EQUIPO ═══
@@ -1760,7 +1815,7 @@
       renderCalDetail();
     }
     if (tab === 'dir') {
-      renderDirectorio();
+      renderTra();
       $('dirSearch').focus();
     }
   }
@@ -1889,24 +1944,30 @@
     });
     renderTeamsGrid();
 
-    // Directorio de proyectos y personas.
+    // Proyectos y personas (informe TRA).
     $('dirSearch').addEventListener('input', function () {
       state.dirQuery = $('dirSearch').value;
-      if (state.directorio) renderDirList();
+      if (state.tra) renderTraResults();
     });
-    $('dirViewProyectos').addEventListener('click', function () {
-      state.dirView = 'proyectos';
-      renderDirectorio();
+    [
+      { id: 'fNombre', campo: 'nombre' },
+      { id: 'fEquipo', campo: 'equipo' },
+      { id: 'fSda', campo: 'sda' },
+      { id: 'fJira', campo: 'jira' }
+    ].forEach(function (def) {
+      $(def.id).addEventListener('change', function () {
+        state.traFilters[def.campo] = $(def.id).value;
+        if (state.tra) renderTraResults();
+      });
     });
-    $('dirViewPersonas').addEventListener('click', function () {
-      state.dirView = 'personas';
-      renderDirectorio();
+    $('btnResetFiltros').addEventListener('click', function () {
+      if (state.tra) resetTraFilters();
     });
     $('btnLooker').addEventListener('click', function () {
       vscode.postMessage({ type: 'openLooker' });
       toast('↗ Abriendo el informe de Looker Studio en el navegador…');
     });
-    loadDirectorio();
+    loadTra();
 
     // Calendario.
     $('calPrev').addEventListener('click', function () {

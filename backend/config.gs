@@ -41,9 +41,7 @@ var CONFIG = {
   SHEET_FORMACIONES: 'Formaciones',
   SHEET_ASISTENTES: 'Asistentes',
   SHEET_USUARIOS: 'Usuarios',
-  SHEET_CONFIG: 'Config',
-  SHEET_PROYECTOS: 'Proyectos',
-  SHEET_PERSONAS: 'Personas'
+  SHEET_CONFIG: 'Config'
 };
 
 // ─────────────────────────────────────────────── Config de equipos ──────
@@ -145,22 +143,6 @@ function setup() {
       'FormacionID', 'Email', 'FechaInscripcion'
     ]);
   }
-  if (!ss.getSheetByName(CONFIG.SHEET_PROYECTOS)) {
-    var pro = ss.insertSheet(CONFIG.SHEET_PROYECTOS);
-    pro.appendRow([
-      'ID', 'Nombre', 'Equipo', 'Estado', 'ResponsableEmail',
-      'Avance', 'Descripcion', 'PersonasEmails'
-    ]);
-    pro.appendRow([
-      'p-ejemplo', 'Migración Murex a MX.3.61', 'front-office', 'En curso',
-      'lucia.ferrer@tudominio.com', 65,
-      'Upgrade de la plataforma y regresión de pricers.',
-      'lucia.ferrer@tudominio.com, marcos.pena@tudominio.com'
-    ]);
-  }
-  if (!ss.getSheetByName(CONFIG.SHEET_PERSONAS)) {
-    var per = ss.insertSheet(CONFIG.SHEET_PERSONAS);
-    per.appendRow(['Email', 'Nombre', 'Equipo', 'Rol']);
-    per.appendRow(['lucia.ferrer@tudominio.com', 'Lucía Ferrer', 'front-office', 'Tech Lead']);
-  }
+  // El informe TRA (proyectos y personas) vive en su propio spreadsheet:
+  // ver TRA_CONFIG en tra.gs. No necesita hojas aquí.
 }

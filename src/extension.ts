@@ -333,27 +333,94 @@ function getWebviewContent(
           </div>
         </div>
 
-        <!-- Vista: directorio de proyectos y personas (Looker/Sheets) -->
+        <!-- Vista: proyectos y personas (réplica del informe TRA de Looker) -->
         <div class="tab-view" id="viewDir" role="tabpanel" hidden>
           <div class="dir-toolbar">
             <div class="dir-search">
               <span class="dir-search-icon">🔎</span>
               <input id="dirSearch" type="text" autocomplete="off"
-                placeholder="Buscar por proyecto, equipo o persona…">
-            </div>
-            <div class="dir-switch">
-              <button class="chip-btn active" id="dirViewProyectos" type="button">Proyectos</button>
-              <button class="chip-btn" id="dirViewPersonas" type="button">Personas</button>
+                placeholder="Buscar persona, equipo, SDATOOL o feature JIRA…">
             </div>
           </div>
-          <div class="dir-teamchips" id="dirTeamChips"></div>
+
+          <!-- Filtros de búsqueda (como en el Looker) -->
+          <div class="tra-filters">
+            <label class="tra-filter">
+              <span>Nombre</span>
+              <select id="fNombre"></select>
+            </label>
+            <label class="tra-filter">
+              <span>Equipo</span>
+              <select id="fEquipo"></select>
+            </label>
+            <label class="tra-filter">
+              <span>Proyecto SDA</span>
+              <select id="fSda"></select>
+            </label>
+            <label class="tra-filter">
+              <span>Feature JIRA</span>
+              <select id="fJira"></select>
+            </label>
+            <button class="btn secondary tra-reset" id="btnResetFiltros"
+              type="button">Reestablecer filtros</button>
+          </div>
+
+          <div class="warn-banner info" id="traNote">
+            ℹ️ Información <strong>complementaria</strong> (informe TRA de
+            imputaciones): no todos los equipos ni todas las personas del
+            área aparecen aquí.
+          </div>
+
           <div class="dir-scroll">
-            <div class="dir-kpis" id="dirKpis"></div>
-            <div class="dir-list" id="dirList"></div>
+            <div class="tra-dash">
+              <div class="tra-card tra-total">
+                <span class="tra-card-title">Total de imputación</span>
+                <span class="tra-hours-label">horas</span>
+                <span class="tra-hours" id="traTotal">—</span>
+                <div class="tra-minis">
+                  <span id="traPersonas">—</span>
+                  <span id="traProyectos">—</span>
+                </div>
+              </div>
+              <div class="tra-card tra-chart">
+                <span class="tra-card-title">Proyectos imputados por tiempo</span>
+                <div class="tra-chart-body">
+                  <canvas id="traDonut" width="170" height="170"></canvas>
+                  <div class="tra-legend" id="traLegend"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="tra-tables">
+              <div class="tra-card">
+                <span class="tra-card-title">Personas
+                  <span class="tra-count" id="cntPersonas"></span></span>
+                <div class="tra-table-wrap">
+                  <table class="tra-table" id="tblPersonas">
+                    <thead><tr><th>Nombre</th><th>Equipo</th>
+                      <th class="num">Horas</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="tra-card">
+                <span class="tra-card-title">Proyectos
+                  <span class="tra-count" id="cntProyectos"></span></span>
+                <div class="tra-table-wrap">
+                  <table class="tra-table" id="tblProyectos">
+                    <thead><tr><th>SDATOOL</th><th>Feature JIRA</th>
+                      <th>Descripción</th><th class="num">Horas</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           </div>
+
           <div class="dir-foot">
-            <span class="dir-foot-note">Fuente (modo real): hojas «Proyectos» y
-              «Personas» vía Apps Script · informe original en Looker Studio</span>
+            <span class="dir-foot-note">Fuente (modo real): Google Sheets del
+              informe TRA vía Apps Script (se actualiza a diario) · informe
+              original en Looker Studio</span>
             <button class="btn ghost" id="btnLooker" type="button">Abrir en Looker Studio ↗</button>
           </div>
         </div>
