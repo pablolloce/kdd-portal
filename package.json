@@ -2,7 +2,7 @@
   "name": "kdd-portal",
   "displayName": "KDD Portal",
   "description": "Portal del área de Tesorería en VS Code: chat por equipo (Google Grupos), formaciones (Calendar + Sheets) y Knowledge Base (Copilot). Versión DEMO con datos simulados.",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "publisher": "kdd-demo",
   "private": true,
   "license": "MIT",
@@ -44,7 +44,32 @@
         "view": "kddPortal.home",
         "contents": "Hub del área de Tesorería: chat de equipos, formaciones y Knowledge Base.\n[Abrir KDD Portal](command:kddPortal.open)\nVersión demo con datos simulados."
       }
-    ]
+    ],
+    "configuration": {
+      "title": "KDD Portal",
+      "properties": {
+        "kddPortal.modoMock": {
+          "type": "boolean",
+          "default": true,
+          "description": "Usar datos simulados (demo). Desactívalo para conectar con el backend real de Google Apps Script."
+        },
+        "kddPortal.appsScriptUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "URL `/exec` del despliegue Web App de Google Apps Script (ver `backend/DESPLIEGUE.md`). Obligatoria con el modo mock desactivado."
+        },
+        "kddPortal.emailUsuario": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Tu email corporativo. En modo real identifica al usuario ante el backend (hoja *Usuarios* → equipo). Obligatorio con el modo mock desactivado."
+        },
+        "kddPortal.nombreUsuario": {
+          "type": "string",
+          "default": "",
+          "description": "Nombre visible en el chat (opcional; si se deja vacío se deriva del email)."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

@@ -14,31 +14,40 @@
 import * as vscode from 'vscode';
 
 /**
- * MODO MOCK.
- * true  → la identidad del usuario se simula (no se pide login de Google).
- * false → se usará vscode.authentication.getSession con un proveedor 'google'.
+ * MODO DE FUNCIONAMIENTO — se controla desde los AJUSTES de VS Code
+ * (Preferencias → Configuración → «KDD Portal»), sin recompilar:
  *
- * NOTA (Knowledge Base): en modo real, la pestaña «Knowledge Base» usará la
- * Language Model API de VS Code (vscode.lm.selectChatModels con vendor
- * 'copilot') pasando como contexto los documentos de la ruta local del equipo
- * (KB_BASE_PATH en media/main.js). En modo mock las respuestas se simulan.
+ *   kddPortal.modoMock      true (por defecto) → datos simulados.
+ *   kddPortal.appsScriptUrl URL /exec del despliegue de Apps Script.
+ *   kddPortal.emailUsuario  identidad enviada al backend en modo real
+ *                           (la hoja "Usuarios" la traduce a equipo).
+ *   kddPortal.nombreUsuario nombre visible (opcional).
+ *
+ * Pasos de despliegue del backend: backend/DESPLIEGUE.md.
+ *
+ * NOTA (identidad): se optó por email en ajustes confiando en el dominio
+ * (VS Code no trae proveedor de auth de Google; si algún día se instala
+ * uno, cambiar getUserSession a vscode.authentication.getSession).
+ * NOTA (Knowledge Base): la pestaña KB seguirá simulada también en modo
+ * real hasta el hito Copilot (vscode.lm + KB local sincronizada desde
+ * Drive con getKbIndex/getKbFile).
  */
-const MOCK_MODE = true;
+interface PortalConfig {
+  mockMode: boolean;
+  appsScriptUrl: string;
+  emailUsuario: string;
+  nombreUsuario: string;
+}
 
-/**
- * Scopes OAuth que la extensión pedirá al proveedor de autenticación cuando
- * MOCK_MODE sea false. No van en package.json: se pasan en tiempo de ejecución
- * a vscode.authentication.getSession().
- *
- *   - openid  → identificador del usuario
- *   - email   → dirección de correo (se envía al backend de Apps Script)
- *   - profile → nombre visible para el chat
- *
- * NOTA: VS Code no trae un proveedor 'google' integrado (solo 'github' y
- * 'microsoft'); hará falta tener instalada una extensión que aporte ese
- * proveedor de autenticación de Google.
- */
-const GOOGLE_AUTH_SCOPES = ['openid', 'email', 'profile'];
+function getPortalConfig(): PortalConfig {
+  const cfg = vscode.workspace.getConfiguration('kddPortal');
+  return {
+    mockMode: cfg.get<boolean>('modoMock', true),
+    appsScriptUrl: (cfg.get<string>('appsScriptUrl') ?? '').trim(),
+    emailUsuario: (cfg.get<string>('emailUsuario') ?? '').trim(),
+    nombreUsuario: (cfg.get<string>('nombreUsuario') ?? '').trim()
+  };
+}
 
 /**
  * Informe de Looker Studio del directorio de proyectos/personas del área.
@@ -63,10 +72,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('kddPortal.open', async () => {
       const user = await getUserSession();
       if (!user) {
-        void vscode.window.showErrorMessage(
-          'KDD Portal: no se pudo obtener la sesión de usuario.'
-        );
-        return;
+        return; // getUserSession ya avisó del motivo.
       }
       openPortalPanel(context, user);
     })
@@ -81,6 +87,27 @@ export function activate(context: vscode.ExtensionContext): void {
       getChildren: () => []
     })
   );
+
+  // Si cambian los ajustes de KDD Portal con el panel abierto, se recarga
+  // el webview para aplicar el nuevo modo/URL (se pierde el estado en
+  // pantalla, aceptable al ser un cambio de configuración).
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(async (event) => {
+      if (event.affectsConfiguration('kddPortal') && currentPanel) {
+        const user = await getUserSession();
+        if (user) {
+          currentPanel.webview.html = getWebviewContent(
+            currentPanel.webview,
+            context.extensionUri,
+            user,
+            String(
+              (context.extension.packageJSON as { version?: string }).version ?? ''
+            )
+          );
+        }
+      }
+    })
+  );
 }
 
 export function deactivate(): void {
@@ -90,28 +117,48 @@ export function deactivate(): void {
 // ─────────────────────────────────────────────────────── Autenticación ──
 
 /**
- * Devuelve la identidad del usuario.
- * En modo mock devuelve un usuario ficticio al instante; en modo real usa la
- * API nativa de autenticación de VS Code.
+ * Devuelve la identidad del usuario según el modo configurado.
+ * Mock → usuaria ficticia; real → email de los ajustes (obligatorio),
+ * cuyo equipo resuelve el backend (getUserInfo, hoja "Usuarios").
  */
 async function getUserSession(): Promise<UserInfo | undefined> {
-  if (MOCK_MODE) {
-    // Usuaria simulada para la demo visual (área de Tesorería).
-    // Su equipo lo determina el backend (acción getUserInfo, hoja "Usuarios").
+  const config = getPortalConfig();
+
+  if (config.mockMode) {
     return { name: 'María Dev', email: 'maria.dev@banco.demo' };
   }
 
-  // Modo real: pide (o reutiliza) una sesión de Google.
-  const session = await vscode.authentication.getSession(
-    'google',
-    GOOGLE_AUTH_SCOPES,
-    { createIfNone: true }
-  );
-  if (!session) {
+  if (!config.emailUsuario || !config.appsScriptUrl) {
+    const abrir = 'Abrir ajustes';
+    const falta = !config.appsScriptUrl
+      ? 'kddPortal.appsScriptUrl'
+      : 'kddPortal.emailUsuario';
+    const eleccion = await vscode.window.showErrorMessage(
+      `KDD Portal: falta configurar «${falta}» para el modo real ` +
+        '(o reactiva kddPortal.modoMock).',
+      abrir
+    );
+    if (eleccion === abrir) {
+      void vscode.commands.executeCommand(
+        'workbench.action.openSettings',
+        'kddPortal'
+      );
+    }
     return undefined;
   }
-  // account.label suele ser el nombre visible y account.id el email.
-  return { name: session.account.label, email: session.account.id };
+
+  // Nombre visible: el configurado o uno legible derivado del email
+  // ("maria.dev@banco.com" → "Maria Dev").
+  const nombre =
+    config.nombreUsuario ||
+    config.emailUsuario
+      .split('@')[0]
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map((parte) => parte.charAt(0).toUpperCase() + parte.slice(1))
+      .join(' ');
+
+  return { name: nombre, email: config.emailUsuario };
 }
 
 // ──────────────────────────────────────────────────────────── Webview ──
@@ -210,10 +257,13 @@ function getWebviewContent(
 
   // Configuración inyectada al webview. El replace evita cerrar la etiqueta
   // <script> si algún dato contuviera '<'.
-  const config = JSON.stringify({ user, mockMode: MOCK_MODE, version }).replace(
-    /</g,
-    '\\u003c'
-  );
+  const portal = getPortalConfig();
+  const config = JSON.stringify({
+    user,
+    mockMode: portal.mockMode,
+    appsScriptUrl: portal.appsScriptUrl,
+    version
+  }).replace(/</g, '\\u003c');
 
   // CSP: solo recursos locales de la extensión + nonce para los scripts.
   // connect-src ya incluye los dominios de Apps Script para cuando se

@@ -28,12 +28,14 @@
 
   const CONFIG = window.__TEAM_HUB_CONFIG__ || {};
 
-  /** true → backend simulado; false → fetch real a Apps Script. */
+  /**
+   * true → backend simulado; false → fetch real a Apps Script.
+   * Viene del ajuste kddPortal.modoMock (inyectado por la extensión).
+   */
   const MOCK_MODE = CONFIG.mockMode !== false;
 
-  /** URL del despliegue Web App de Google Apps Script (modo real). */
-  const APPS_SCRIPT_URL =
-    'https://script.google.com/macros/s/TU_ID_DE_DESPLIEGUE/exec';
+  /** URL /exec del despliegue Web App (ajuste kddPortal.appsScriptUrl). */
+  const APPS_SCRIPT_URL = String(CONFIG.appsScriptUrl || '').trim();
 
   /**
    * Ruta local base del repositorio de conocimiento (modo real).
@@ -41,8 +43,11 @@
    */
   const KB_BASE_PATH = './kb';
 
-  /** Intervalo de polling del chat (ms). */
-  const POLL_INTERVAL_MS = 3000;
+  /**
+   * Intervalo de polling del chat (ms). En real es más lento a propósito:
+   * GmailApp.search tiene cuota diaria y el backend cachea 15 s.
+   */
+  const POLL_INTERVAL_MS = MOCK_MODE ? 3000 : 20000;
 
   const vscode =
     typeof acquireVsCodeApi === 'function'
@@ -727,6 +732,14 @@
   async function api(action, payload) {
     const teamId = state.currentTeamId || state.userTeamId || TEAMS[0].id;
 
+    // La KB responde SIEMPRE en local: el hito Copilot (vscode.lm con la
+    // KB sincronizada de Drive) está pendiente y el backend GAS no tiene
+    // acción kbAsk. Así el modo real no rompe la pestaña KB.
+    if (action === 'kbAsk') {
+      await delay(rand(400, 900));
+      return MockBackend.kbAsk(teamId, payload);
+    }
+
     if (MOCK_MODE) {
       await delay(rand(200, 550));
       switch (action) {
@@ -744,10 +757,6 @@
           return MockBackend.createFormacion(payload.team || teamId, payload);
         case 'rsvp':
           return MockBackend.rsvp(payload);
-        case 'kbAsk':
-          // En modo real esta acción NO va a Apps Script: usará la
-          // Language Model API (Copilot) desde la extensión.
-          return MockBackend.kbAsk(teamId, payload);
         case 'getTra':
           return MockBackend.getTra();
         default:
@@ -756,6 +765,12 @@
     }
 
     // ── Modo real (Google Apps Script) ──
+    if (!APPS_SCRIPT_URL) {
+      return {
+        ok: false,
+        error: 'Falta configurar el ajuste kddPortal.appsScriptUrl'
+      };
+    }
     if (payload) {
       const res = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
@@ -1907,10 +1922,12 @@
   // ───────────────────────────────────────────────────────── Arranque ──
 
   async function init() {
+    // Insignia siempre visible: muestra el modo y la versión instalada.
+    $('badgeDemo').textContent =
+      (MOCK_MODE ? 'MODO DEMO' : 'CONECTADO') +
+      (CONFIG.version ? ' · v' + CONFIG.version : '');
+    $('badgeDemo').hidden = false;
     if (MOCK_MODE) {
-      $('badgeDemo').textContent =
-        'MODO DEMO' + (CONFIG.version ? ' · v' + CONFIG.version : '');
-      $('badgeDemo').hidden = false;
       $('demoBanner').hidden = false;
     }
     $('userLine').textContent = 'Identificando usuario…';

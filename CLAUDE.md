@@ -102,23 +102,24 @@ real da 27.687,25 h). Sin SDATOOL → usar `non_sda_project` como proyecto
 - Escribir `̀-ͯ` escapado en regex de main.js (los caracteres
   combinantes literales se corrompen al editar).
 
-## Modo real (pendiente de conectar)
+## Modo real (v0.8.0: conmutable por ajustes, backend por desplegar)
 
-1. `MOCK_MODE = false` en `src/extension.ts` **y** `media/main.js`;
-   URL del despliegue GAS en `APPS_SCRIPT_URL` (mejor: moverla a un
-   setting de VS Code).
-2. Desplegar `backend/` como Web App (pasos en `backend/router.gs`);
-   `setup()` crea las hojas; rellenar la hoja Config (grupo, carpeta KB
-   de Drive y calendario por equipo) y Usuarios (email → equipo).
-3. KB: bajar Drive→local vía `getKbIndex`/`getKbFile` y responder con
-   Copilot (`vscode.lm`, vendor 'copilot') usando
-   `backend/instrucciones-kb-copilot.md` como prompt. Sin Copilot →
-   degradar a mock con aviso.
-4. Identidad real del usuario: pendiente de decidir (proveedor de auth
-   de Google para VS Code, o email como parámetro confiando en el
-   dominio). El usuario NO tiene acceso a la API de Gemini (descartado).
-5. Subir el polling del chat a 15–30 s (cuotas GmailApp; getChat ya
-   cachea 15 s en el backend).
+- La extensión YA se conmuta sin recompilar, vía ajustes de VS Code:
+  `kddPortal.modoMock` (default true), `kddPortal.appsScriptUrl`,
+  `kddPortal.emailUsuario` (identidad elegida: email confiado del
+  dominio; el usuario NO tiene API de Gemini ni proveedor de auth de
+  Google) y `kddPortal.nombreUsuario`. Insignia: «MODO DEMO»/«CONECTADO»
+  + versión. Polling del chat: 3 s mock / 20 s real (cuotas GmailApp).
+- **Checklist completo de despliegue en `backend/DESPLIEGUE.md`**
+  (spreadsheet del portal + setup(), hoja Config/Usuarios, Web App,
+  groups, carpetas KB de Drive, calendario, verificación con ?action=).
+- **Hito pendiente (KB-Copilot)**: la pestaña KB responde con el mock
+  incluso en modo real. Falta: sincronizar la KB Drive→local
+  (`getKbIndex`/`getKbFile` ya existen en el backend) y responder con
+  `vscode.lm` (vendor 'copilot') usando
+  `backend/instrucciones-kb-copilot.md`; sin Copilot, degradar a mock
+  con aviso. Los contadores kbDocs de TEAMS pasarán a salir del índice
+  real.
 
 ## Historia del repositorio
 
