@@ -2,7 +2,7 @@
   "name": "kdd-portal",
   "displayName": "KDD Portal",
   "description": "Portal del área de Tesorería en VS Code: chat por equipo (Google Grupos), formaciones (Calendar + Sheets) y Knowledge Base (Copilot). Versión DEMO con datos simulados.",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "publisher": "kdd-demo",
   "private": true,
   "license": "MIT",
@@ -62,6 +62,11 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Tu email corporativo. En modo real identifica al usuario ante el backend (hoja *Usuarios* → equipo). Obligatorio con el modo mock desactivado."
+        },
+        "kddPortal.tokenAcceso": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Token compartido opcional. Debe coincidir con la propiedad de script `TOKEN_ACCESO` del proyecto de Apps Script. Recomendado si la Web App se despliega con acceso «Cualquier persona»."
         },
         "kddPortal.nombreUsuario": {
           "type": "string",

@@ -37,6 +37,9 @@
   /** URL /exec del despliegue Web App (ajuste kddPortal.appsScriptUrl). */
   const APPS_SCRIPT_URL = String(CONFIG.appsScriptUrl || '').trim();
 
+  /** Token compartido opcional (ajuste kddPortal.tokenAcceso). */
+  const ACCESS_TOKEN = String(CONFIG.token || '').trim();
+
   /**
    * Ruta local base del repositorio de conocimiento (modo real).
    * Cada equipo tiene su carpeta: KB_BASE_PATH/<carpeta-del-equipo>.
@@ -776,7 +779,8 @@
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(Object.assign(
-          { action: action, team: teamId, email: USER.email, name: USER.name },
+          { action: action, team: teamId, email: USER.email,
+            name: USER.name, token: ACCESS_TOKEN },
           payload
         ))
       });
@@ -786,7 +790,8 @@
       APPS_SCRIPT_URL +
       '?action=' + encodeURIComponent(action) +
       '&team=' + encodeURIComponent(teamId) +
-      '&email=' + encodeURIComponent(USER.email);
+      '&email=' + encodeURIComponent(USER.email) +
+      (ACCESS_TOKEN ? '&token=' + encodeURIComponent(ACCESS_TOKEN) : '');
     const res = await fetch(url);
     return res.json();
   }

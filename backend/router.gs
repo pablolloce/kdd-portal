@@ -42,9 +42,27 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+/**
+ * Token compartido OPCIONAL. Si defines la propiedad de script
+ * TOKEN_ACCESO (Configuración del proyecto → Propiedades del script),
+ * toda petición debe traer ese valor (parámetro `token` en GET, campo
+ * `token` en el body de los POST; la extensión lo envía desde el ajuste
+ * kddPortal.tokenAcceso). Recomendado si la Web App se despliega con
+ * acceso «Cualquier persona»: la URL + token actúan de credencial.
+ * Sin la propiedad definida, no se exige token (compatible hacia atrás).
+ */
+function checkToken_(provided) {
+  var esperado =
+    PropertiesService.getScriptProperties().getProperty('TOKEN_ACCESO');
+  if (esperado && String(provided || '') !== esperado) {
+    throw new Error('Token de acceso inválido o ausente');
+  }
+}
+
 function doGet(e) {
   try {
     var p = (e && e.parameter) || {};
+    checkToken_(p.token);
     switch (p.action || '') {
       case 'ping':
         return jsonOut_({ ok: true, pong: new Date().toISOString() });
@@ -71,6 +89,7 @@ function doGet(e) {
 function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);
+    checkToken_(body.token);
     switch (body.action || '') {
       case 'sendMessage':
         sendChatMessage_(requireTeam_(body.team), body.name, body.email, body.text);

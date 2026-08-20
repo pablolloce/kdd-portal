@@ -37,6 +37,7 @@ interface PortalConfig {
   appsScriptUrl: string;
   emailUsuario: string;
   nombreUsuario: string;
+  tokenAcceso: string;
 }
 
 function getPortalConfig(): PortalConfig {
@@ -45,7 +46,8 @@ function getPortalConfig(): PortalConfig {
     mockMode: cfg.get<boolean>('modoMock', true),
     appsScriptUrl: (cfg.get<string>('appsScriptUrl') ?? '').trim(),
     emailUsuario: (cfg.get<string>('emailUsuario') ?? '').trim(),
-    nombreUsuario: (cfg.get<string>('nombreUsuario') ?? '').trim()
+    nombreUsuario: (cfg.get<string>('nombreUsuario') ?? '').trim(),
+    tokenAcceso: (cfg.get<string>('tokenAcceso') ?? '').trim()
   };
 }
 
@@ -262,6 +264,7 @@ function getWebviewContent(
     user,
     mockMode: portal.mockMode,
     appsScriptUrl: portal.appsScriptUrl,
+    token: portal.tokenAcceso,
     version
   }).replace(/</g, '\\u003c');
 

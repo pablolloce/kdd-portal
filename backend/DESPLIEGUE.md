@@ -117,6 +117,42 @@ Abre en el navegador (con tu sesión de Google):
 Si algo devuelve `{"ok":false,…}`, el campo `error` dice qué falta
 (hoja sin crear, equipo sin configurar, permiso sin conceder…).
 
+## 5bis. Acceso de la Web App: dominio vs «Cualquier persona» (+token)
+
+**El detalle más importante del despliegue.** El webview de VS Code hace
+`fetch` SIN tus cookies de Google (es un navegador aislado). Por tanto:
+
+- Despliegue con acceso **«Cualquier usuario de tu dominio»** (URL tipo
+  `script.google.com/a/macros/tudominio.com/...`): el navegador con tu
+  sesión lo ve bien, pero la extensión recibirá la página de login en
+  vez de JSON → todo mostrará «Sin conexión». **No sirve para la
+  extensión.**
+- Despliegue con acceso **«Cualquier persona»**: responde JSON anónimo y
+  la extensión funciona. Mitigación del riesgo: define un **token
+  compartido** — el backend lo exige y la URL sola deja de ser
+  suficiente.
+
+**Prueba decisiva (30 s):** abre `<URL/exec>?action=ping` en una ventana
+de **incógnito**. ¿JSON `{"ok":true,…}`? → vale para la extensión.
+¿Pantalla de login de Google? → hay que redesplegar con «Cualquier
+persona»: Implementar → Gestionar implementaciones → ✏️ Editar → «Quién
+tiene acceso: Cualquier persona» → Nueva versión (usa la URL que muestre
+el diálogo).
+
+**Activar el token compartido:**
+
+1. En Apps Script: ⚙️ Configuración del proyecto → «Propiedades del
+   script» → Añadir: propiedad `TOKEN_ACCESO`, valor una cadena larga
+   aleatoria (p. ej. 30+ caracteres).
+2. En VS Code: pega el mismo valor en el ajuste `kddPortal.tokenAcceso`.
+3. Al verificar por navegador, añade `&token=EL_VALOR` a las URLs de
+   prueba. Sin token válido el backend responde
+   `{"ok":false,"error":"Token de acceso inválido o ausente"}`.
+
+Si tu Workspace no permite el acceso «Cualquier persona» (lo decide el
+administrador del dominio), la extensión no podrá llamar al backend;
+habría que pedir excepción al admin o plantear otra vía de auth.
+
 ## 6. Conectar la extensión (sin recompilar)
 
 En VS Code: `Ctrl+,` → busca **KDD Portal**:
