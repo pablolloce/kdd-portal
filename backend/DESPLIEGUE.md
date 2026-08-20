@@ -20,10 +20,16 @@ y desactivar `kddPortal.modoMock`.
 
 ## 2. Spreadsheet «KDD Portal» (la BD del portal)
 
-1. Crea un Google Sheets vacío y copia su ID (lo que hay entre `/d/` y
-   `/edit` en la URL).
-2. Las hojas **las crea `setup()`** (paso 3); solo tendrás que rellenar
-   dos a mano:
+**Vía rápida (recomendada): importar la plantilla.** En
+`backend/plantilla/kdd-portal-sheets.xlsx` está el spreadsheet ya
+montado (4 hojas + hoja LEEME con instrucciones y celdas a rellenar en
+amarillo). En Google Sheets: crear hoja de cálculo vacía → Archivo →
+Importar → Subir → «Reemplazar hoja de cálculo». Con esta vía **no hace
+falta ejecutar `setup()`** — las hojas ya existen. Copia el ID del
+spreadsheet (entre `/d/` y `/edit` en la URL).
+
+**Vía manual:** crea un Sheets vacío y deja que `setup()` (paso 3) cree
+las hojas. En ambos casos, las dos hojas a rellenar a mano:
 
    **`Config`** — un equipo por fila (el corazón de la configuración):
 
@@ -124,6 +130,20 @@ En VS Code: `Ctrl+,` → busca **KDD Portal**:
 Reabre el panel: la insignia pasará de «MODO DEMO · vX» a
 **«CONECTADO · vX»**. El polling del chat baja a 20 s en real (cuotas
 de GmailApp).
+
+## 6bis. Arranque con UN solo equipo
+
+Para el piloto basta con configurar `front-office` (o el equipo que
+elijas, respetando su TeamId):
+
+- Hoja `Config`: solo su fila con GroupEmail y KbDriveFolderId; deja las
+  otras tres filas con TeamId/Nombre y el resto vacío.
+- Hoja `Usuarios`: las personas del piloto, todas con ese equipo.
+- Solo hace falta 1 Google Group y 1 carpeta de Drive.
+- En la extensión seguirán viéndose los 4 equipos: en modo real, el chat
+  de los no configurados mostrará «Sin conexión» (su KB sigue simulada).
+  Es el comportamiento esperado del despliegue por fases; al incorporar
+  cada equipo, basta con completar su fila en `Config`.
 
 ## 7. Qué queda simulado incluso en modo real (hitos siguientes)
 
