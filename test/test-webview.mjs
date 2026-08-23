@@ -35,7 +35,7 @@ report.badge = await page.$eval('#badgeDemo', (el) => el.textContent);
 report.menuVisibleAlInicio = await page.$eval('#screenHome', (el) => !el.hidden);
 report.tarjetas = await page.$$eval('.team-card', (els) => els.length);
 report.badgeTuEquipo = await page.$eval(
-  '.team-card.tc-front-office .team-badge',
+  '.team-card[data-id="front-office"] .team-badge',
   (el) => el.textContent
 );
 await page.screenshot({ path: shot('menu-equipos.png') });

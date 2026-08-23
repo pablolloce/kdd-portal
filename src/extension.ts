@@ -12,6 +12,8 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import * as vscode from 'vscode';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 /**
  * MODO DE FUNCIONAMIENTO — se controla desde los AJUSTES de VS Code
@@ -38,6 +40,8 @@ interface PortalConfig {
   emailUsuario: string;
   nombreUsuario: string;
   tokenAcceso: string;
+  rutaKb: string;
+  modeloCopilot: string;
 }
 
 function getPortalConfig(): PortalConfig {
@@ -47,7 +51,9 @@ function getPortalConfig(): PortalConfig {
     appsScriptUrl: (cfg.get<string>('appsScriptUrl') ?? '').trim(),
     emailUsuario: (cfg.get<string>('emailUsuario') ?? '').trim(),
     nombreUsuario: (cfg.get<string>('nombreUsuario') ?? '').trim(),
-    tokenAcceso: (cfg.get<string>('tokenAcceso') ?? '').trim()
+    tokenAcceso: (cfg.get<string>('tokenAcceso') ?? '').trim(),
+    rutaKb: (cfg.get<string>('rutaKb') ?? '').trim(),
+    modeloCopilot: (cfg.get<string>('modeloCopilot') ?? '').trim()
   };
 }
 
@@ -202,7 +208,19 @@ function openPortalPanel(
 
   // Mensajes que llegan desde el webview (JS del panel) hacia la extensión.
   panel.webview.onDidReceiveMessage(
-    (message: { type: string; level?: string; text?: string; path?: string }) => {
+    (message: {
+      type: string;
+      level?: string;
+      text?: string;
+      path?: string;
+      reqId?: string;
+      teamId?: string;
+      teamNombre?: string;
+      question?: string;
+      foreign?: boolean;
+    }) => {
+      const post = (m: unknown) => void panel.webview.postMessage(m);
+
       if (message.type === 'notify' && message.text) {
         if (message.level === 'error') {
           void vscode.window.showErrorMessage(`KDD Portal: ${message.text}`);
@@ -210,16 +228,59 @@ function openPortalPanel(
           void vscode.window.showInformationMessage(`KDD Portal: ${message.text}`);
         }
       }
-      // Clic en una fuente citada por la Knowledge Base.
-      // En modo real: vscode.workspace.openTextDocument(rutaLocalKB + path).
+      // Clic en una fuente citada por la Knowledge Base: en modo real abre
+      // el documento local sincronizado; en demo, una notificación.
       if (message.type === 'openSource' && message.path) {
-        void vscode.window.showInformationMessage(
-          `KDD Portal (demo): aquí se abriría «${message.path}» desde la ruta local de la Knowledge Base.`
-        );
+        const cfg = getPortalConfig();
+        if (cfg.mockMode) {
+          void vscode.window.showInformationMessage(
+            `KDD Portal (demo): aquí se abriría «${message.path}» desde la ruta local de la Knowledge Base.`
+          );
+        } else {
+          const local = path.join(
+            kbTeamDir(context, cfg, String(message.teamId ?? '')),
+            rutaSegura(String(message.path))
+          );
+          vscode.workspace.openTextDocument(local).then(
+            (doc) => vscode.window.showTextDocument(doc, { preview: true }),
+            () =>
+              vscode.window.showWarningMessage(
+                `KDD Portal: no se encontró «${message.path}» en la KB local (sincroniza primero).`
+              )
+          );
+        }
       }
       // Abre el informe original de Looker Studio en el navegador.
       if (message.type === 'openLooker') {
         void vscode.env.openExternal(vscode.Uri.parse(LOOKER_STUDIO_URL));
+      }
+      // Sincroniza la KB de Drive del equipo a la carpeta local.
+      if (message.type === 'kbSync' && message.teamId) {
+        const cfg = getPortalConfig();
+        kbSyncTeam(context, cfg, message.teamId)
+          .then((r) =>
+            post({
+              type: 'kbSyncDone',
+              reqId: message.reqId,
+              teamId: message.teamId,
+              docs: r.docs,
+              bajados: r.bajados,
+              ruta: r.ruta
+            })
+          )
+          .catch((err: unknown) =>
+            post({
+              type: 'kbSyncError',
+              reqId: message.reqId,
+              teamId: message.teamId,
+              error: err instanceof Error ? err.message : String(err)
+            })
+          );
+      }
+      // Pregunta a la KB local con Copilot (streaming hacia el webview).
+      if (message.type === 'kbAsk' && message.teamId) {
+        const cfg = getPortalConfig();
+        void kbAskCopilot(context, cfg, message, post);
       }
     },
     undefined,
@@ -265,6 +326,7 @@ function getWebviewContent(
     mockMode: portal.mockMode,
     appsScriptUrl: portal.appsScriptUrl,
     token: portal.tokenAcceso,
+    rutaKb: portal.rutaKb,
     version
   }).replace(/</g, '\\u003c');
 
@@ -509,7 +571,9 @@ function getWebviewContent(
             <div class="kb-meta">
               <span id="kbPath">📁 —</span>
               <span id="kbDocs">📄 —</span>
-              <span>⚡ GitHub Copilot <em>(simulado)</em></span>
+              <span id="kbEngine">⚡ Copilot <em>(simulado)</em></span>
+              <button class="btn ghost kb-sync" id="btnKbSync" type="button"
+                hidden>⟳ Sincronizar</button>
             </div>
             <div class="warn-banner" id="kbWarn" hidden>
               ⚠️ <strong>Knowledge Base reducida:</strong> estás consultando la
@@ -566,6 +630,8 @@ function getWebviewContent(
           <div class="panel-head">
             <h2><span class="panel-icon">🎓</span> Formaciones
               <span class="head-sub" id="formTeamLabel"></span></h2>
+            <button class="btn ghost" id="btnNuevaEquipo" type="button"
+              hidden>＋ Nueva</button>
           </div>
           <div class="cards" id="cardsList"></div>
         </section>
@@ -593,6 +659,292 @@ function getWebviewContent(
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
+}
+
+// ═══════════════════════ KNOWLEDGE BASE REAL (Drive → local + Copilot) ═══
+//  Flujo: el webview pide kbSync/kbAsk → la extensión descarga la KB del
+//  equipo vía el backend GAS (getKbIndex/getKbFile) a la carpeta local
+//  (ajuste kddPortal.rutaKb) y responde con Copilot (vscode.lm) usando los
+//  documentos más relevantes como contexto. Prompt completo de referencia:
+//  backend/instrucciones-kb-copilot.md.
+
+const PROMPT_KB = `Eres el asistente de la Knowledge Base del equipo {EQUIPO} del área de Tesorería. Tu única fuente de verdad son los documentos adjuntados como contexto, sincronizados desde el Drive del equipo a {RUTA_KB}.
+
+REGLAS:
+1. Responde SOLO con información de los documentos del contexto; no inventes procedimientos, horarios, rutas ni sistemas.
+2. Cita al final las rutas de los documentos que uses (tal como aparecen en el contexto). No cites documentos no usados.
+3. Si la respuesta no está en el contexto, dilo claramente y sugiere revisar el índice o las FAQ; como último recurso, el chat del equipo (recordando tener paciencia).
+4. {AVISO}
+5. Responde en español, breve y accionable: listas con guiones, \`código\` para comandos y rutas. Sin saludos ni despedidas.
+6. Ante ambigüedad, pregunta qué caso aplica en lugar de elegir por tu cuenta.
+
+CONTEXTO (documentos de la KB):
+{DOCUMENTOS}
+
+PREGUNTA DEL USUARIO:
+{PREGUNTA}`;
+
+/** Carpeta base local de las KB (ajuste kddPortal.rutaKb o almacén interno). */
+function kbBaseDir(
+  context: vscode.ExtensionContext,
+  cfg: PortalConfig
+): string {
+  return cfg.rutaKb || path.join(context.globalStorageUri.fsPath, 'kb');
+}
+
+function kbTeamDir(
+  context: vscode.ExtensionContext,
+  cfg: PortalConfig,
+  teamId: string
+): string {
+  return path.join(kbBaseDir(context, cfg), rutaSegura(teamId));
+}
+
+/** Aplasta separadores/traversal para construir rutas locales seguras. */
+function rutaSegura(p: string): string {
+  return p
+    .split('/')
+    .map((s) => s.replace(/[\\:*?"<>|]/g, '_').trim())
+    .filter((s) => s && s !== '.' && s !== '..')
+    .join(path.sep);
+}
+
+/** GET al backend GAS con email/token, exigiendo respuesta JSON. */
+async function gasGetJson(
+  cfg: PortalConfig,
+  params: Record<string, string>
+): Promise<Record<string, unknown>> {
+  if (!cfg.appsScriptUrl) {
+    throw new Error('Falta configurar kddPortal.appsScriptUrl');
+  }
+  const url = new URL(cfg.appsScriptUrl);
+  for (const [k, v] of Object.entries(params)) {
+    url.searchParams.set(k, v);
+  }
+  if (cfg.emailUsuario) url.searchParams.set('email', cfg.emailUsuario);
+  if (cfg.tokenAcceso) url.searchParams.set('token', cfg.tokenAcceso);
+
+  const res = await fetch(url.toString(), { redirect: 'follow' });
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    throw new Error(
+      'El backend no devolvió JSON (¿Web App restringida al dominio o token incorrecto?)'
+    );
+  }
+}
+
+interface KbIndexEntry {
+  id: string;
+  path: string;
+  updated: number;
+  supported: boolean;
+}
+
+/** Descarga (incremental) la KB de Drive del equipo a la carpeta local. */
+async function kbSyncTeam(
+  context: vscode.ExtensionContext,
+  cfg: PortalConfig,
+  teamId: string
+): Promise<{ docs: number; bajados: number; ruta: string }> {
+  const idx = await gasGetJson(cfg, { action: 'getKbIndex', team: teamId });
+  if (!idx.ok) {
+    throw new Error(String(idx.error ?? 'getKbIndex falló'));
+  }
+
+  const dir = kbTeamDir(context, cfg, teamId);
+  await fs.mkdir(dir, { recursive: true });
+
+  const manifestPath = path.join(dir, '.kdd-manifest.json');
+  let manifest: Record<string, number> = {};
+  try {
+    manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  } catch {
+    // Primera sincronización.
+  }
+
+  const soportados = (idx.files as KbIndexEntry[]).filter((f) => f.supported);
+  let bajados = 0;
+  for (const f of soportados) {
+    if (manifest[f.id] === f.updated) continue;
+    const res = await gasGetJson(cfg, {
+      action: 'getKbFile',
+      team: teamId,
+      fileId: f.id
+    });
+    const file = res.file as
+      | { supported?: boolean; content?: string }
+      | undefined;
+    if (!res.ok || !file || !file.supported) continue;
+
+    const rel = rutaSegura(f.path);
+    const destino = path.join(
+      dir,
+      /\.(md|txt)$/i.test(rel) ? rel : rel + '.md'
+    );
+    await fs.mkdir(path.dirname(destino), { recursive: true });
+    await fs.writeFile(destino, String(file.content ?? ''), 'utf8');
+    manifest[f.id] = f.updated;
+    bajados += 1;
+  }
+
+  await fs.writeFile(manifestPath, JSON.stringify(manifest), 'utf8');
+  return { docs: soportados.length, bajados, ruta: dir };
+}
+
+interface KbDoc {
+  rel: string;
+  texto: string;
+}
+
+/** Documentos .md/.txt de la KB local del equipo (recursivo, acotado). */
+async function kbDocsLocales(dir: string): Promise<KbDoc[]> {
+  const out: KbDoc[] = [];
+  async function walk(d: string, prefijo: string): Promise<void> {
+    let entradas;
+    try {
+      entradas = await fs.readdir(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entradas) {
+      if (e.name.startsWith('.') || out.length >= 60) continue;
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) {
+        await walk(full, prefijo + e.name + '/');
+      } else if (/\.(md|txt)$/i.test(e.name)) {
+        try {
+          const texto = await fs.readFile(full, 'utf8');
+          out.push({ rel: prefijo + e.name, texto: texto.slice(0, 100000) });
+        } catch {
+          // Ilegible: se ignora.
+        }
+      }
+    }
+  }
+  await walk(dir, '');
+  return out;
+}
+
+function normaliza(t: string): string {
+  return t
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+/** Puntúa por palabras clave y devuelve los N documentos más relevantes. */
+function eligeRelevantes(docs: KbDoc[], pregunta: string, n = 4): KbDoc[] {
+  const palabras = normaliza(pregunta)
+    .split(/\W+/)
+    .filter((w) => w.length > 3);
+  const puntuados = docs
+    .map((d) => {
+      const titulo = normaliza(d.rel);
+      const cuerpo = normaliza(d.texto);
+      let score = 0;
+      for (const w of palabras) {
+        if (titulo.includes(w)) score += 6;
+        score += Math.min(10, cuerpo.split(w).length - 1);
+      }
+      return { d, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const conScore = puntuados.filter((p) => p.score > 0).slice(0, n);
+  const elegidos = conScore.length ? conScore : puntuados.slice(0, 2);
+  return elegidos.map((p) => p.d);
+}
+
+/** Responde una pregunta de la KB con Copilot, en streaming al webview. */
+async function kbAskCopilot(
+  context: vscode.ExtensionContext,
+  cfg: PortalConfig,
+  msg: {
+    reqId?: string;
+    teamId?: string;
+    teamNombre?: string;
+    question?: string;
+    foreign?: boolean;
+  },
+  post: (m: unknown) => void
+): Promise<void> {
+  const reqId = msg.reqId;
+  const teamId = String(msg.teamId ?? '');
+  try {
+    const dir = kbTeamDir(context, cfg, teamId);
+    let docs = await kbDocsLocales(dir);
+    if (!docs.length) {
+      // Primera vez: sincroniza y reintenta.
+      await kbSyncTeam(context, cfg, teamId);
+      docs = await kbDocsLocales(dir);
+    }
+    if (!docs.length) {
+      throw new Error(
+        'La KB local está vacía (¿carpeta de Drive sin documentos o sin configurar en la hoja Config?)'
+      );
+    }
+
+    const relevantes = eligeRelevantes(docs, String(msg.question ?? ''));
+    const contexto = relevantes
+      .map((d) => `─── DOCUMENTO: ${d.rel} ───\n${d.texto.slice(0, 8000)}`)
+      .join('\n\n');
+
+    // Selección del modelo de Copilot (ajuste kddPortal.modeloCopilot).
+    const modelos = await vscode.lm.selectChatModels({ vendor: 'copilot' });
+    if (!modelos.length) {
+      throw new Error(
+        'No hay modelos de Copilot disponibles: instala la extensión GitHub Copilot e inicia sesión.'
+      );
+    }
+    const filtro = cfg.modeloCopilot.toLowerCase();
+    const modelo = filtro
+      ? modelos.find((m) =>
+          [m.id, m.family, m.name].some((x) =>
+            String(x).toLowerCase().includes(filtro)
+          )
+        )
+      : modelos[0];
+    if (!modelo) {
+      throw new Error(
+        `Ningún modelo de Copilot coincide con «${cfg.modeloCopilot}». ` +
+          'Disponibles: ' + modelos.map((m) => m.family).join(', ')
+      );
+    }
+
+    const prompt = PROMPT_KB.replace('{EQUIPO}', msg.teamNombre || teamId)
+      .replace('{RUTA_KB}', dir)
+      .replace(
+        '{AVISO}',
+        msg.foreign
+          ? 'ATENCIÓN: el usuario consulta la KB de OTRO equipo (versión reducida). Añade al final una línea avisando de que la información puede estar desactualizada o incompleta y debe confirmarse con el equipo propietario.'
+          : 'Es la KB del propio equipo del usuario.'
+      )
+      .replace('{DOCUMENTOS}', contexto)
+      .replace('{PREGUNTA}', String(msg.question ?? ''));
+
+    const peticion = await modelo.sendRequest(
+      [vscode.LanguageModelChatMessage.User(prompt)],
+      {},
+      new vscode.CancellationTokenSource().token
+    );
+    for await (const trozo of peticion.text) {
+      post({ type: 'kbChunk', reqId, text: trozo });
+    }
+    post({
+      type: 'kbDone',
+      reqId,
+      sources: relevantes.map((d) => d.rel),
+      modelo: modelo.family || modelo.id
+    });
+  } catch (err) {
+    post({
+      type: 'kbError',
+      reqId,
+      error: err instanceof Error ? err.message : String(err)
+    });
+  }
 }
 
 function getNonce(): string {

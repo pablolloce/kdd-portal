@@ -982,14 +982,12 @@ body {
   flex: none;
 }
 
-.tc-front-office .tdot,
-.tdot.tc-front-office { background: var(--vscode-charts-blue, #3794ff); }
-.tc-liquidez .tdot,
-.tdot.tc-liquidez { background: var(--vscode-charts-green, #89d185); }
-.tc-riesgos .tdot,
-.tdot.tc-riesgos { background: var(--vscode-charts-purple, #b180d7); }
-.tc-back-office .tdot,
-.tdot.tc-back-office { background: var(--vscode-charts-orange, #d18616); }
+/* Por índice de equipo (cíclico), válido también para equipos dinámicos */
+.tc-c0 .tdot, .tdot.tc-c0 { background: var(--vscode-charts-blue, #3794ff); }
+.tc-c1 .tdot, .tdot.tc-c1 { background: var(--vscode-charts-green, #89d185); }
+.tc-c2 .tdot, .tdot.tc-c2 { background: var(--vscode-charts-purple, #b180d7); }
+.tc-c3 .tdot, .tdot.tc-c3 { background: var(--vscode-charts-orange, #d18616); }
+.tc-c4 .tdot, .tdot.tc-c4 { background: var(--vscode-charts-red, #f14c4c); }
 
 /* ── Tarjetas de equipo del menú ── */
 
@@ -1022,10 +1020,17 @@ body {
   animation: msg-in 0.25s ease both;
 }
 
-.team-card.tc-front-office { border-top-color: var(--vscode-charts-blue, #3794ff); }
-.team-card.tc-liquidez { border-top-color: var(--vscode-charts-green, #89d185); }
-.team-card.tc-riesgos { border-top-color: var(--vscode-charts-purple, #b180d7); }
-.team-card.tc-back-office { border-top-color: var(--vscode-charts-orange, #d18616); }
+.team-card.tc-c0 { border-top-color: var(--vscode-charts-blue, #3794ff); }
+.team-card.tc-c1 { border-top-color: var(--vscode-charts-green, #89d185); }
+.team-card.tc-c2 { border-top-color: var(--vscode-charts-purple, #b180d7); }
+.team-card.tc-c3 { border-top-color: var(--vscode-charts-orange, #d18616); }
+.team-card.tc-c4 { border-top-color: var(--vscode-charts-red, #f14c4c); }
+
+.kb-sync {
+  margin-left: auto;
+  padding: 2px 10px;
+  font-size: 10.5px;
+}
 
 .team-card:hover {
   transform: translateY(-2px);

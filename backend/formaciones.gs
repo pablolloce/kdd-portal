@@ -64,24 +64,29 @@ function createFormacion_(body) {
   var fin = new Date(inicio.getTime() + CONFIG.DEFAULT_DURATION_MIN * 60000);
   var id = Utilities.getUuid();
 
-  // 1) Evento en Calendar.
-  var calendar = CalendarApp.getCalendarById(team.calendarId);
-  if (!calendar) {
-    throw new Error('Calendario no accesible: ' + team.calendarId);
+  // 1) Evento en Calendar — OPCIONAL: si el equipo/área no tiene
+  // calendario configurado (vacío o placeholder), la formación se
+  // registra igualmente solo en Sheets.
+  var evento = null;
+  if (esCalendarValido_(team.calendarId)) {
+    var calendar = CalendarApp.getCalendarById(team.calendarId);
+    if (calendar) {
+      evento = calendar.createEvent(body.titulo, inicio, fin, {
+        description:
+          (body.descripcion || '') +
+          '\n\nCreado desde KDD Portal por ' + body.name
+      });
+    }
   }
-  var evento = calendar.createEvent(body.titulo, inicio, fin, {
-    description:
-      (body.descripcion || '') + '\n\nCreado desde KDD Portal por ' + body.name
-  });
 
   // 2) Registro en Sheets.
   getSheet_(CONFIG.SHEET_FORMACIONES).appendRow([
     id, body.titulo, inicio.toISOString(), body.descripcion || '',
-    evento.getId(), body.name, new Date().toISOString(), body.team
+    evento ? evento.getId() : '', body.name, new Date().toISOString(), body.team
   ]);
 
   // El creador queda apuntado automáticamente.
-  evento.addGuest(body.email);
+  if (evento) evento.addGuest(body.email);
   getSheet_(CONFIG.SHEET_ASISTENTES)
     .appendRow([id, body.email, new Date().toISOString()]);
 
@@ -134,11 +139,17 @@ function rsvpFormacion_(body) {
 
   // Evita inscripciones duplicadas.
   if (asistentes.indexOf(body.email) === -1) {
-    var calendarId = teamId
-      ? getTeamConfig_(teamId).calendarId
-      : CONFIG.CALENDAR_ID;
-    var evento = CalendarApp.getCalendarById(calendarId).getEventById(row[4]);
-    if (evento) evento.addGuest(body.email);
+    // Invitado al evento solo si la formación tiene evento y calendario.
+    if (row[4]) {
+      var calendarId = teamId
+        ? getTeamConfig_(teamId).calendarId
+        : CONFIG.CALENDAR_ID;
+      if (esCalendarValido_(calendarId)) {
+        var calendar = CalendarApp.getCalendarById(calendarId);
+        var evento = calendar ? calendar.getEventById(row[4]) : null;
+        if (evento) evento.addGuest(body.email);
+      }
+    }
 
     getSheet_(CONFIG.SHEET_ASISTENTES)
       .appendRow([String(body.id), body.email, new Date().toISOString()]);
@@ -155,6 +166,11 @@ function rsvpFormacion_(body) {
     asistentes: asistentes.length,
     apuntado: true
   };
+}
+
+/** true si el id de calendario está configurado de verdad (no placeholder). */
+function esCalendarValido_(calendarId) {
+  return Boolean(calendarId) && String(calendarId).indexOf('PEGA_') === -1;
 }
 
 /** Índice { formacionId: [email, …] } a partir de la hoja "Asistentes". */

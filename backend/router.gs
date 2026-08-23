@@ -31,6 +31,7 @@
  *  ────────
  *   GET  ?action=ping
  *   GET  ?action=getUserInfo&email=…          → { team }
+ *   GET  ?action=getTeams                     → { teams[] } (hoja Config)
  *   GET  ?action=getChat&team=…               → { messages[] }
  *   GET  ?action=getFormaciones&email=…       → { formaciones[] } (globales)
  *   GET  ?action=getTra                       → { rows[] } (informe TRA)
@@ -68,6 +69,8 @@ function doGet(e) {
         return jsonOut_({ ok: true, pong: new Date().toISOString() });
       case 'getUserInfo':
         return jsonOut_({ ok: true, team: getUserTeam_(p.email) });
+      case 'getTeams':
+        return jsonOut_({ ok: true, teams: getTeams_() });
       case 'getChat':
         return jsonOut_({ ok: true, messages: getChat_(requireTeam_(p.team)) });
       case 'getFormaciones':

@@ -171,7 +171,7 @@
 
   // ══════════════════════════════════════ EQUIPOS DEL ÁREA DE TESORERÍA ═══
 
-  const TEAMS = [
+  const MOCK_TEAMS = [
     {
       id: 'front-office',
       nombre: 'Front Office (Murex)',
@@ -408,18 +408,66 @@
     }
   ];
 
+  /**
+   * Equipos activos. En mock son los MOCK_TEAMS de arriba; en modo real se
+   * cargan de la hoja Config del backend (action=getTeams) durante init(),
+   * de modo que añadir un equipo = añadir una fila en la hoja.
+   */
+  let TEAMS = MOCK_MODE ? MOCK_TEAMS : [];
+
   function teamById(id) {
     return TEAMS.find(function (t) { return t.id === id; }) || TEAMS[0];
   }
 
-  /** Clase CSS de color del equipo (punto/acento en calendario y tarjetas). */
+  /** Clase de color por índice de equipo (tc-c0…tc-c4, cíclica). */
   function teamColorClass(teamId) {
-    return 'tc-' + teamId;
+    const idx = TEAMS.findIndex(function (t) { return t.id === teamId; });
+    return 'tc-c' + ((idx >= 0 ? idx : 0) % 5);
   }
 
   /** Nº de documentos visibles en la versión reducida de una KB ajena. */
   function reducedDocs(team) {
+    if (!team.kbDocs) return null;
     return Math.max(3, Math.round(team.kbDocs / 3));
+  }
+
+  const DEFAULT_TEAM_ICONS = ['🏦', '📈', '⚙️', '🧩', '📊', '🗄️', '🔐', '🛠️'];
+  const KB_SUGGESTIONS_GENERICAS = [
+    '¿Qué documentación hay disponible?',
+    '¿Cómo se despliega a producción?',
+    '¿Dónde está el runbook de incidencias?'
+  ];
+
+  /** Convierte una fila de la hoja Config en un equipo para la UI. */
+  function buildRealTeam(row, index) {
+    const nombre = row.nombre || row.teamId;
+    return {
+      id: row.teamId,
+      nombre: nombre,
+      corto: nombre.split('(')[0].trim().split(/\s+/).slice(0, 2).join(' '),
+      icon: row.icono || DEFAULT_TEAM_ICONS[index % DEFAULT_TEAM_ICONS.length],
+      grupo: row.grupo || '',
+      kbFolder: row.teamId,
+      kbDocs: null,
+      hasKb: Boolean(row.hasKb),
+      miembros: row.miembros || 0,
+      members: [],
+      kbSuggestions: KB_SUGGESTIONS_GENERICAS,
+      kb: null,
+      kbFallbackSources: []
+    };
+  }
+
+  /** Modo real: carga los equipos desde la hoja Config del backend. */
+  async function loadTeams() {
+    const data = await api('getTeams');
+    if (!data || !data.ok) {
+      throw new Error((data && data.error) || 'getTeams no respondió');
+    }
+    TEAMS = (data.teams || []).map(buildRealTeam);
+    if (!TEAMS.length) {
+      throw new Error('La hoja Config no tiene equipos dados de alta');
+    }
   }
 
   // ═══════════════════════════════════════════════════════ MOCK BACKEND ═══
@@ -509,7 +557,7 @@
     }
 
     const chatStores = {};
-    TEAMS.forEach(function (team) {
+    MOCK_TEAMS.forEach(function (team) {
       chatStores[team.id] = createChatStore(team);
     });
 
@@ -817,6 +865,13 @@
     teamTab: 'kb',
     /** teamId → true una vez aceptado el aviso del chat. */
     chatUnlocked: {},
+    /** Error de la última carga del informe TRA ('' = sin error). */
+    traError: '',
+    /** Secuencia y peticiones pendientes del puente KB↔Copilot. */
+    kbReqSeq: 0,
+    kbPending: {},
+    /** teamId → nº de docs tras la última sincronización de su KB. */
+    kbSynced: {},
     /** Mes visible del calendario (Date del día 1). */
     calMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     /** Día seleccionado del calendario (AAAA-MM-DD). */
@@ -836,7 +891,19 @@
     if (!state.kbHistories[teamId]) {
       const team = teamById(teamId);
       const foreign = isForeign(teamId);
-      const text = foreign
+      const text = !MOCK_MODE
+        ? (foreign
+            ? 'Estás consultando la KB de **' + team.nombre + '** (equipo ' +
+              'ajeno): trátala como **versión reducida**, puede contener ' +
+              'errores o información desactualizada.\n\n' +
+              'Respondo con **Copilot** sobre los documentos sincronizados ' +
+              'desde su Drive. Si no resuelvo tu duda, pregunta en su chat ' +
+              '— con paciencia 🙂.'
+            : '¡Hola! Respondo con **Copilot** sobre la Knowledge Base de ' +
+              'tu equipo, **' + team.nombre + '**, sincronizada desde Drive ' +
+              'a tu carpeta local.\n\n' +
+              'Pregúntame lo que necesites: citaré las fuentes de cada respuesta.')
+        : foreign
         ? 'Estás consultando la **versión reducida** de la Knowledge Base de ' +
           '**' + team.nombre + '** (' + reducedDocs(team) + ' de ' + team.kbDocs +
           ' documentos). Puede contener errores o información desactualizada.\n\n' +
@@ -860,6 +927,15 @@
   }
 
   // ──────────────────────────────────────────────────────────────── Toast ──
+
+  let lastErrorToast = '';
+  /** Muestra el error real del backend (dedupe del último mostrado). */
+  function toastError(prefix, error) {
+    const texto = '⚠️ ' + prefix + ': ' + String(error || 'error desconocido');
+    if (texto === lastErrorToast) return;
+    lastErrorToast = texto;
+    toast(texto.slice(0, 180));
+  }
 
   let toastTimer = null;
   function toast(text) {
@@ -895,11 +971,19 @@
       html += '<span class="team-card-name">' + escapeHtml(team.nombre) + '</span>';
       html += '<span class="team-card-group">' + escapeHtml(team.grupo) + '</span>';
       html += '<span class="team-card-stats">';
-      html += '<span>👥 ' + team.members.length + '</span>';
+      html += '<span>👥 ' + (team.members.length || team.miembros || 0) + '</span>';
       html += '<span>🎓 ' + proximas + ' próxima' + (proximas === 1 ? '' : 's') + '</span>';
-      html += own
-        ? '<span>📄 ' + team.kbDocs + ' docs</span>'
-        : '<span class="warn-text">📄 ' + reducedDocs(team) + '/' + team.kbDocs + ' (reducida)</span>';
+      if (MOCK_MODE) {
+        html += own
+          ? '<span>📄 ' + team.kbDocs + ' docs</span>'
+          : '<span class="warn-text">📄 ' + reducedDocs(team) + '/' + team.kbDocs + ' (reducida)</span>';
+      } else {
+        html += team.hasKb
+          ? (own
+              ? '<span>📄 KB en Drive</span>'
+              : '<span class="warn-text">📄 KB (reducida)</span>')
+          : '<span class="warn-text">📄 sin KB</span>';
+      }
       html += '</span>';
       html += '<span class="team-card-cta">Entrar →</span>';
       html += '</button>';
@@ -1075,12 +1159,17 @@
       const data = await api('getTra');
       if (data && data.ok) {
         state.tra = data.rows;
-        if (state.screen === 'home' && state.homeTab === 'dir') {
-          renderTra();
-        }
+        state.traError = '';
+      } else {
+        state.traError = (data && data.error) || 'respuesta inválida del backend';
+        toastError('Informe TRA', state.traError);
       }
     } catch (err) {
-      // Silencioso: se reintenta al abrir la pestaña.
+      state.traError = 'sin conexión con el backend';
+      toastError('Informe TRA', state.traError);
+    }
+    if (state.screen === 'home' && state.homeTab === 'dir') {
+      renderTra();
     }
   }
 
@@ -1324,6 +1413,20 @@
 
   function renderTra() {
     if (!state.tra) {
+      if (state.traError) {
+        $('traTotal').textContent = '—';
+        $('traLegend').innerHTML = '';
+        $('traPersonas').textContent = '';
+        $('traProyectos').textContent = '';
+        const aviso =
+          '⚠️ ' + escapeHtml(state.traError) +
+          ' — corrige y pulsa «Reestablecer filtros» para reintentar.';
+        $('tblPersonas').querySelector('tbody').innerHTML =
+          '<tr><td colspan="3" class="tra-empty">' + aviso + '</td></tr>';
+        $('tblProyectos').querySelector('tbody').innerHTML =
+          '<tr><td colspan="4" class="tra-empty">' + aviso + '</td></tr>';
+        return;
+      }
       $('traTotal').textContent = '…';
       loadTra();
       return;
@@ -1554,6 +1657,22 @@
     let node =
       teamId === state.currentTeamId ? appendKbMessage(answerMsg) : null;
 
+    // ── Modo real: la extensión responde con Copilot sobre la KB local
+    // sincronizada desde Drive; los trozos llegan por window message. ──
+    if (!MOCK_MODE) {
+      const reqId = 'kb-' + (++state.kbReqSeq);
+      state.kbPending[reqId] = { answerMsg: answerMsg, node: node, teamId: teamId };
+      vscode.postMessage({
+        type: 'kbAsk',
+        reqId: reqId,
+        teamId: teamId,
+        teamNombre: teamById(teamId).nombre,
+        question: q,
+        foreign: foreign
+      });
+      return;
+    }
+
     try {
       const data = await api('kbAsk', { question: q });
       const full = data.answer || 'No he podido generar una respuesta.';
@@ -1599,6 +1718,65 @@
     }
   }
 
+  /** Mensajes del puente KB↔Copilot que envía la extensión. */
+  function onKbBridgeMessage(msg) {
+    const p = state.kbPending[msg.reqId];
+    if (!p) return;
+
+    if (msg.type === 'kbChunk') {
+      p.answerMsg.text += String(msg.text || '');
+      if (p.node && p.node.isConnected) {
+        p.node.querySelector('.kb-body').innerHTML =
+          escapeHtml(p.answerMsg.text) + '<span class="caret"></span>';
+        $('kbList').scrollTop = $('kbList').scrollHeight;
+      }
+      return;
+    }
+
+    delete state.kbPending[msg.reqId];
+    p.answerMsg.streaming = false;
+    if (msg.type === 'kbDone') {
+      p.answerMsg.sources = msg.sources || [];
+      if (msg.modelo) {
+        $('kbEngine').innerHTML = '⚡ Copilot · ' + escapeHtml(msg.modelo);
+      }
+    } else {
+      p.answerMsg.text =
+        '⚠️ ' + String(msg.error || 'No se pudo consultar la KB con Copilot');
+    }
+    state.kbBusy = false;
+    if (state.currentTeamId === p.teamId && state.screen === 'team') {
+      renderKbAll();
+      $('kbText').focus();
+    }
+  }
+
+  /** Lanza la sincronización Drive→local de la KB de un equipo. */
+  function kbSyncNow(teamId, silencioso) {
+    vscode.postMessage({
+      type: 'kbSync',
+      reqId: 'sync-' + (++state.kbReqSeq),
+      teamId: teamId
+    });
+    if (!silencioso) toast('⟳ Sincronizando la KB desde Drive…');
+  }
+
+  function onKbSyncMessage(msg) {
+    if (msg.type === 'kbSyncDone') {
+      state.kbSynced[msg.teamId] = msg.docs;
+      const team = teamById(msg.teamId);
+      if (team) team.kbDocs = msg.docs;
+      if (state.currentTeamId === msg.teamId && state.screen === 'team') {
+        $('kbDocs').textContent = '📄 ' + msg.docs + ' docs sincronizados';
+        $('kbDocs').title = msg.ruta || '';
+      }
+      toast('✅ KB sincronizada: ' + msg.docs + ' documentos (' +
+        (msg.bajados || 0) + ' nuevos o actualizados)');
+    } else {
+      toastError('Sincronización KB', msg.error);
+    }
+  }
+
   // ──────────────────────────────────────────────────────────── Acciones ──
 
   async function refreshChat() {
@@ -1613,6 +1791,9 @@
         renderChat();
         setTyping(data.typing || null);
         $('syncText').textContent = 'Sincronizado · ' + fmtTime(Date.now());
+      } else {
+        $('syncText').textContent = 'Error';
+        toastError('Chat', data && data.error);
       }
     } catch (err) {
       if (teamId === state.currentTeamId) {
@@ -1633,6 +1814,8 @@
           renderCalendar();
           renderCalDetail();
         }
+      } else {
+        toastError('Formaciones', data && data.error);
       }
     } catch (err) {
       // Silencioso: se reintenta en la siguiente acción.
@@ -1690,7 +1873,7 @@
     } catch (err) {
       btn.disabled = false;
       btn.textContent = 'Apuntarse';
-      toast('⚠️ No se pudo completar la inscripción');
+      toastError('Inscripción', err && err.message);
     }
   }
 
@@ -1743,7 +1926,7 @@
         throw new Error((data && data.error) || 'Error');
       }
     } catch (err) {
-      toast('⚠️ No se pudo crear la formación');
+      toastError('Crear formación', err && err.message);
     } finally {
       btn.disabled = false;
       btn.textContent = 'Crear y notificar al grupo';
@@ -1777,10 +1960,32 @@
     $('kbWarn').hidden = !foreign;
 
     // Contextos de KB y chat.
-    $('kbPath').textContent = '📁 ' + KB_BASE_PATH + '/' + team.kbFolder;
-    $('kbDocs').textContent = foreign
-      ? '📄 ' + reducedDocs(team) + ' de ' + team.kbDocs + ' docs (reducida)'
-      : '📄 ' + team.kbDocs + ' docs indexados';
+    if (MOCK_MODE) {
+      $('kbPath').textContent = '📁 ' + KB_BASE_PATH + '/' + team.kbFolder;
+      $('kbDocs').textContent = foreign
+        ? '📄 ' + reducedDocs(team) + ' de ' + team.kbDocs + ' docs (reducida)'
+        : '📄 ' + team.kbDocs + ' docs indexados';
+      $('kbEngine').innerHTML = '⚡ Copilot <em>(simulado)</em>';
+      $('btnKbSync').hidden = true;
+    } else {
+      $('kbPath').textContent =
+        '📁 ' + (CONFIG.rutaKb || 'almacén de la extensión') + '/' + team.id;
+      const sincronizados = state.kbSynced[team.id];
+      $('kbDocs').textContent = sincronizados
+        ? '📄 ' + sincronizados + ' docs sincronizados' +
+          (foreign ? ' (reducida)' : '')
+        : team.hasKb
+          ? '📄 KB en Drive — pulsa Sincronizar'
+          : '📄 KB sin configurar en la hoja Config';
+      $('kbEngine').innerHTML = '⚡ Copilot';
+      $('btnKbSync').hidden = false;
+      // Primera visita al equipo: sincroniza su KB en segundo plano.
+      if (team.hasKb && state.kbSynced[team.id] === undefined) {
+        state.kbSynced[team.id] = 0;
+        kbSyncNow(team.id, true);
+      }
+    }
+    $('btnNuevaEquipo').hidden = teamId !== state.userTeamId;
     $('chatGroupEmail').textContent = team.grupo;
     $('chatText').placeholder =
       'Mensaje a ' + team.grupo + '…  (Enter para enviar)';
@@ -1937,12 +2142,47 @@
     }
     $('userLine').textContent = 'Identificando usuario…';
 
-    // 1) El backend indica el equipo de la usuaria (hoja "Usuarios").
+    // 0) Modo real: los equipos salen de la hoja Config del backend.
+    if (!MOCK_MODE) {
+      try {
+        await loadTeams();
+      } catch (err) {
+        const motivo = (err && err.message) || 'error desconocido';
+        $('userLine').textContent = 'Error conectando con el backend';
+        $('teamsGrid').innerHTML =
+          '<div class="empty"><span class="empty-icon">⚠️</span>' +
+          'No se pudieron cargar los equipos: ' + escapeHtml(motivo) +
+          '.<br>Revisa los ajustes de KDD Portal o el despliegue del backend' +
+          ' (backend/DESPLIEGUE.md). El panel se recarga al guardar los ajustes.</div>';
+        toastError('Equipos', motivo);
+        return;
+      }
+    }
+
+    // 1) El backend indica el equipo del usuario (hoja "Usuarios").
+    let teamUsuario = '';
     try {
       const info = await api('getUserInfo');
-      state.userTeamId = (info && info.team) || TEAMS[0].id;
+      if (info && info.ok !== false) {
+        teamUsuario = String(info.team || '');
+      } else {
+        toastError('Identidad', info && info.error);
+      }
     } catch (err) {
+      // Sin respuesta: se aplica el fallback de abajo.
+    }
+    if (teamUsuario && TEAMS.some(function (t) { return t.id === teamUsuario; })) {
+      state.userTeamId = teamUsuario;
+    } else {
       state.userTeamId = TEAMS[0].id;
+      if (!MOCK_MODE) {
+        toastError(
+          'Identidad',
+          teamUsuario
+            ? 'tu equipo «' + teamUsuario + '» no está en la hoja Config'
+            : 'tu email no está en la hoja Usuarios — mostrando ' + TEAMS[0].nombre
+        );
+      }
     }
     const myTeam = teamById(state.userTeamId);
 
@@ -1983,7 +2223,12 @@
       });
     });
     $('btnResetFiltros').addEventListener('click', function () {
-      if (state.tra) resetTraFilters();
+      if (state.tra) {
+        resetTraFilters();
+      } else {
+        state.traError = '';
+        renderTra(); // reintenta la carga
+      }
     });
     $('btnLooker').addEventListener('click', function () {
       vscode.postMessage({ type: 'openLooker' });
@@ -2021,6 +2266,26 @@
     });
     $('tabChat').addEventListener('click', function () {
       activateTeamTab('chat');
+    });
+
+    // KB real: sincronización manual y alta de formación desde el equipo.
+    $('btnKbSync').addEventListener('click', function () {
+      if (state.currentTeamId) kbSyncNow(state.currentTeamId, false);
+    });
+    $('btnNuevaEquipo').addEventListener('click', function () {
+      goHome();
+      activateHomeTab('calendar');
+      toggleFormNueva(true);
+    });
+
+    // Mensajes de la extensión (puente KB↔Copilot y sincronización).
+    window.addEventListener('message', function (event) {
+      const msg = (event && event.data) || {};
+      if (msg.type === 'kbChunk' || msg.type === 'kbDone' || msg.type === 'kbError') {
+        onKbBridgeMessage(msg);
+      } else if (msg.type === 'kbSyncDone' || msg.type === 'kbSyncError') {
+        onKbSyncMessage(msg);
+      }
     });
 
     // Aviso modal del chat.

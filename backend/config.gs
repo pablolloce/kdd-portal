@@ -53,7 +53,7 @@ var CONFIG = {
  */
 function getTeamsConfig_() {
   var cache = CacheService.getScriptCache();
-  var cached = cache.get('teamsConfig');
+  var cached = cache.get('teamsCfgV2');
   if (cached) {
     return JSON.parse(cached);
   }
@@ -67,12 +67,41 @@ function getTeamsConfig_() {
       nombre: String(row[1] || ''),
       groupEmail: String(row[2] || '').trim(),
       kbFolderId: String(row[3] || '').trim(),
-      calendarId: String(row[4] || '').trim() || CONFIG.CALENDAR_ID
+      calendarId: String(row[4] || '').trim() || CONFIG.CALENDAR_ID,
+      icono: String(row[5] || '').trim() // columna F opcional: emoji del equipo
     };
   });
 
-  cache.put('teamsConfig', JSON.stringify(teams), 300);
+  cache.put('teamsCfgV2', JSON.stringify(teams), 300);
   return teams;
+}
+
+/**
+ * Lista de equipos para la extensión (action=getTeams): la hoja Config es
+ * la única fuente de verdad — añadir un equipo = añadir una fila, sin
+ * tocar código. Incluye el nº de miembros (hoja Usuarios) y si tiene KB.
+ */
+function getTeams_() {
+  var teams = getTeamsConfig_();
+  var usuarios = getSheet_(CONFIG.SHEET_USUARIOS).getDataRange().getValues().slice(1);
+  var miembros = {};
+  usuarios.forEach(function (row) {
+    if (!row[0]) return;
+    var equipo = String(row[1] || '').trim();
+    miembros[equipo] = (miembros[equipo] || 0) + 1;
+  });
+
+  return Object.keys(teams).map(function (id) {
+    var t = teams[id];
+    return {
+      teamId: t.teamId,
+      nombre: t.nombre,
+      grupo: t.groupEmail,
+      icono: t.icono,
+      miembros: miembros[id] || 0,
+      hasKb: Boolean(t.kbFolderId) && t.kbFolderId.indexOf('PEGA_') === -1
+    };
+  });
 }
 
 /** Config de un equipo concreto; lanza error si no está dado de alta. */

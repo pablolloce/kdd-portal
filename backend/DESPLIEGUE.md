@@ -31,18 +31,18 @@ spreadsheet (entre `/d/` y `/edit` en la URL).
 **Vía manual:** crea un Sheets vacío y deja que `setup()` (paso 3) cree
 las hojas. En ambos casos, las dos hojas a rellenar a mano:
 
-   **`Config`** — un equipo por fila (el corazón de la configuración):
+   **`Config`** — un equipo por fila (el corazón de la configuración).
+   **Desde v0.9.0 la extensión lee los equipos de esta hoja**: añadir un
+   equipo = añadir una fila, sin tocar código.
 
-   | TeamId | Nombre | GroupEmail | KbDriveFolderId | CalendarId |
-   |---|---|---|---|---|
-   | `front-office` | Front Office (Murex) | grupo del equipo | ID carpeta Drive KB | vacío = usa el del área |
-   | `liquidez` | Liquidez y Pagos | … | … | |
-   | `riesgos` | Riesgos y Límites | … | … | |
-   | `back-office` | Back Office y Conciliación | … | … | |
+   | TeamId | Nombre | GroupEmail | KbDriveFolderId | CalendarId | Icono |
+   |---|---|---|---|---|---|
+   | `mi-equipo` | Mi Equipo (App) | grupo del equipo | ID carpeta Drive KB | vacío = usa el del área | emoji opcional |
 
-   ⚠️ Los `TeamId` deben coincidir con los ids de `TEAMS` en
-   `media/main.js` (front-office, liquidez, riesgos, back-office). Si se
-   añaden equipos nuevos, hay que darlos de alta en ambos sitios.
+   - `TeamId`: identificador corto sin espacios (minúsculas y guiones).
+   - `CalendarId` vacío o placeholder → la formación se registra sin
+     evento de calendario (no falla).
+   - `Icono` (columna F, opcional): un emoji para las tarjetas del menú.
 
    **`Usuarios`** — quién pertenece a qué equipo (decide qué KB completa
    ve cada persona):
@@ -107,7 +107,8 @@ Abre en el navegador (con tu sesión de Google):
 
 ```
 <URL/exec>?action=ping                         → {"ok":true,"pong":"…"}
-<URL/exec>?action=getUserInfo&email=TU_EMAIL   → {"ok":true,"team":"front-office"}
+<URL/exec>?action=getUserInfo&email=TU_EMAIL   → {"ok":true,"team":"tu-team-id"}
+<URL/exec>?action=getTeams                     → {"ok":true,"teams":[…]}
 <URL/exec>?action=getFormaciones               → {"ok":true,"formaciones":[]}
 <URL/exec>?action=getChat&team=front-office    → {"ok":true,"messages":[…]}
 <URL/exec>?action=getKbIndex&team=front-office → {"ok":true,"files":[…]}
@@ -181,13 +182,22 @@ elijas, respetando su TeamId):
   Es el comportamiento esperado del despliegue por fases; al incorporar
   cada equipo, basta con completar su fila en `Config`.
 
-## 7. Qué queda simulado incluso en modo real (hitos siguientes)
+## 7. Knowledge Base real (v0.9.0): Drive → local + Copilot
 
-1. **Chat de la Knowledge Base**: responde con el mock hasta el hito
-   Copilot — sincronizar la KB de Drive a local (`getKbIndex`/`getKbFile`
-   ya están en el backend) y responder con `vscode.lm` (vendor
-   'copilot') usando `backend/instrucciones-kb-copilot.md`. Requiere
-   GitHub Copilot instalado en el VS Code del usuario.
-2. Los **contadores de docs de la KB** en tarjetas/cabeceras (kbDocs de
-   `TEAMS` en main.js) — pasarán a salir de `getKbIndex` en ese hito.
-3. Los avisos «(simulado)» de la interfaz se retirarán entonces.
+En modo real la pestaña KB ya funciona de verdad:
+
+1. **Sincronización**: al entrar en un equipo (o con «⟳ Sincronizar»),
+   la extensión descarga su carpeta de Drive vía el backend
+   (`getKbIndex`/`getKbFile`) a la carpeta local del ajuste
+   `kddPortal.rutaKb` (vacío = almacén interno), una subcarpeta por
+   equipo. Descarga incremental por fecha; los Google Docs se exportan
+   a markdown.
+2. **Respuestas con Copilot**: cada pregunta elige los documentos
+   locales más relevantes y responde con `vscode.lm` en streaming.
+   Modelo elegible con `kddPortal.modeloCopilot` (p. ej. `gpt-4o`,
+   `claude`; vacío = primero disponible). Requiere la extensión
+   **GitHub Copilot** con sesión iniciada (la primera llamada pide
+   consentimiento).
+3. Clic en una fuente citada → abre el documento local en el editor.
+4. Si algo falla (sin Copilot, KB vacía, backend inaccesible) la
+   respuesta muestra el motivo exacto.
