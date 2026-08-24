@@ -1,7 +1,7 @@
 /**
- * ═══════════════════════════════════════════════════════════════════════════
+ * ════════════════════════════════════════════════════════════════════════════════════
  *  KDD Portal · CONFIGURACIÓN — hojas "Config" y "Usuarios"
- * ═══════════════════════════════════════════════════════════════════════════
+ * ════════════════════════════════════════════════════════════════════════════════════
  *
  *  La hoja "Config" es la base de datos de aplicativos/equipos del área:
  *  qué Google Group usa cada equipo para el chat, qué carpeta de Drive
@@ -13,7 +13,7 @@
  *  La hoja "Usuarios" resuelve a qué equipo pertenece cada persona
  *  (action=getUserInfo): con ello la extensión decide qué KB completa
  *  mostrar y cuáles son ajenas (reducidas).
- * ═══════════════════════════════════════════════════════════════════════════
+ * ════════════════════════════════════════════════════════════════════════════════════
  */
 
 var CONFIG = {
@@ -44,7 +44,7 @@ var CONFIG = {
   SHEET_CONFIG: 'Config'
 };
 
-// ─────────────────────────────────────────────── Config de equipos ──────
+// ─────────────────────────────────── Config de equipos ──────
 
 /**
  * Lee la hoja "Config" y devuelve { teamId: {teamId, nombre, groupEmail,
@@ -61,9 +61,14 @@ function getTeamsConfig_() {
   var rows = getSheet_(CONFIG.SHEET_CONFIG).getDataRange().getValues().slice(1);
   var teams = {};
   rows.forEach(function (row) {
-    if (!row[0]) return;
-    teams[String(row[0]).trim()] = {
-      teamId: String(row[0]).trim(),
+    var teamId = String(row[0] || '').trim();
+    // Ignora filas sin TeamId y las de texto libre (p.ej. la fila de
+    // instrucciones de la plantilla): un TeamId real nunca lleva
+    // espacios (ver "sin espacios" en DESPLIEGUE.md), así que cualquier
+    // frase con espacios no es un equipo y no debe llegar a la extensión.
+    if (!teamId || /\s/.test(teamId)) return;
+    teams[teamId] = {
+      teamId: teamId,
       nombre: String(row[1] || ''),
       groupEmail: String(row[2] || '').trim(),
       kbFolderId: String(row[3] || '').trim(),
@@ -113,7 +118,7 @@ function getTeamConfig_(teamId) {
   return team;
 }
 
-// ──────────────────────────────────────────────────────── Usuarios ──────
+// ───────────────────────────────────────── Usuarios ──────
 
 /**
  * Devuelve el id de equipo del usuario según la hoja "Usuarios".
@@ -132,7 +137,7 @@ function getUserTeam_(email) {
   return '';
 }
 
-// ─────────────────────────────────────────────────── Sheets helpers ──────
+// ─────────────────────────────────────── Sheets helpers ──────
 
 function getSheet_(name) {
   var ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
