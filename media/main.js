@@ -781,7 +781,12 @@
    * el POST va como text/plain para evitar el preflight CORS.
    */
   async function api(action, payload) {
-    const teamId = state.currentTeamId || state.userTeamId || TEAMS[0].id;
+    // Fallback seguro: durante la carga inicial en modo real, TEAMS aún
+    // está vacío (se rellena con getTeams) y userTeamId todavía no se ha
+    // resuelto. Las acciones que se llaman en ese momento (getTeams,
+    // getUserInfo) no usan teamId, así que '' es inofensivo.
+    const teamId =
+      state.currentTeamId || state.userTeamId || (TEAMS[0] && TEAMS[0].id) || '';
 
     // La KB responde SIEMPRE en local: el hito Copilot (vscode.lm con la
     // KB sincronizada de Drive) está pendiente y el backend GAS no tiene

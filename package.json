@@ -2,7 +2,7 @@
   "name": "kdd-portal",
   "displayName": "KDD Portal",
   "description": "Portal del área de Tesorería en VS Code: chat por equipo (Google Grupos), formaciones (Calendar + Sheets) y Knowledge Base (Copilot). Versión DEMO con datos simulados.",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "publisher": "kdd-demo",
   "private": true,
   "license": "MIT",
