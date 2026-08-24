@@ -78,8 +78,13 @@ las hojas. En ambos casos, las dos hojas a rellenar a mano:
 7. **Implementar → Nueva implementación → Aplicación web**:
    - «Ejecutar como»: **tú** (la cuenta propietaria — sus permisos de
      Gmail/Drive/Calendar son los que usará el backend).
-   - «Quién tiene acceso»: **cualquier usuario de tu dominio** (o
-     «Cualquier persona» si el dominio no lo permite; valorar el riesgo).
+   - «Quién tiene acceso»: **Cualquier persona**. NO elijas «cualquier
+     usuario de tu dominio»: el webview de VS Code hace `fetch` sin
+     sesión de Google, así que con acceso por dominio la extensión
+     recibirá la pantalla de login en vez de JSON (ver detalle y
+     mitigación con token en el punto 5bis). El manifiesto de
+     `backend/appsscript.json` ya trae `"access": "ANYONE_ANONYMOUS"`
+     para que la implementación se proponga así por defecto.
    - Copia la **URL que termina en `/exec`**.
 
 > Cada vez que cambies el código del proyecto: Implementar → Gestionar
