@@ -2170,11 +2170,19 @@
       btn.hidden = true;
       return;
     }
+    // Con sesión el botón NO se deshabilita: pulsar de nuevo renueva el
+    // token. Imprescindible tras un redespliegue del backend (el token
+    // guardado se acuñó con los scopes viejos) o cuando caduque el token
+    // compartido (~1h) — un botón bloqueado dejaba atrapado al usuario
+    // con un token inservible y sin manera de pedir otro.
     btn.hidden = false;
-    btn.disabled = Boolean(sesion);
+    btn.disabled = false;
     btn.classList.toggle('primary', !sesion);
     btn.classList.toggle('joined', Boolean(sesion));
-    btn.textContent = sesion ? '✓ Conectado' : 'Conectar';
+    btn.textContent = sesion ? '✓ Conectado · renovar' : 'Conectar';
+    btn.title = sesion
+      ? 'Sesión activa. Pulsa para renovarla (necesario tras redesplegar el backend o si caduca el token compartido).'
+      : 'Iniciar sesión con tu cuenta corporativa en el navegador';
   }
 
   /**
@@ -2187,7 +2195,6 @@
   function wireLogin() {
     actualizarBotonConectar();
     $('btnConectar').addEventListener('click', function () {
-      if (sesion) return;
       const btn = $('btnConectar');
       btn.disabled = true;
       btn.textContent = 'Conectando…';

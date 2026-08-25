@@ -364,6 +364,15 @@ async function handleAuthCallback(
             '(DESPLIEGUE.md 6ter). Scopes actuales del token: ' +
             sonda.scopes.map((s) => s.split('/').pop()).join(', ')
         );
+      } else {
+        // Resumen SIEMPRE visible del token recién acuñado: con esto la
+        // siguiente prueba es concluyente (qué identidad y scopes lleva,
+        // cuánto le queda) sin adivinar en qué estado quedó el despliegue.
+        void vscode.window.showInformationMessage(
+          `KDD Portal: token compartido de ${sonda.email} · ` +
+            `caduca en ~${sonda.caducaEnMin} min · scopes: ` +
+            sonda.scopes.map((s) => s.split('/').pop()).join(', ')
+        );
       }
     } else {
       void vscode.window.showWarningMessage(
@@ -497,9 +506,11 @@ function clasificarHtmlDeGoogle(
   ) {
     return (
       'Google redirigió al login: no aceptó el token de la cabecera. ' +
-      'Causa típica: el token no lleva el scope de identidad (userinfo.email) — ' +
-      'repega backend/appsscript.json, ejecuta setup() para RE-AUTORIZAR, ' +
-      'publica Nueva versión y vuelve a pulsar «Conectar».'
+      'Si has redesplegado el backend después de conectar, tu token guardado ' +
+      'es ANTERIOR al cambio: pulsa «✓ Conectado · renovar» para acuñar uno ' +
+      'nuevo. Si ya renovaste y sigue pasando, el token no lleva el scope de ' +
+      'identidad (userinfo.email): repega backend/appsscript.json, ejecuta ' +
+      'setup() para RE-AUTORIZAR, publica Nueva versión y renueva otra vez.'
     );
   }
   if (/authorization is required|se requiere autorizaci|authorization required/.test(u)) {
@@ -530,7 +541,7 @@ function clasificarHtmlDeGoogle(
  */
 async function probarTokenCompartido(
   token: string
-): Promise<{ email: string; scopes: string[] } | { error: string }> {
+): Promise<{ email: string; scopes: string[]; caducaEnMin: number } | { error: string }> {
   try {
     const res = await fetch(
       'https://oauth2.googleapis.com/tokeninfo?access_token=' +
@@ -539,6 +550,7 @@ async function probarTokenCompartido(
     const info = (await res.json()) as {
       email?: string;
       scope?: string;
+      expires_in?: string | number;
       error_description?: string;
       error?: string;
     };
@@ -547,7 +559,8 @@ async function probarTokenCompartido(
     }
     return {
       email: String(info.email || ''),
-      scopes: String(info.scope || '').split(/\s+/).filter(Boolean)
+      scopes: String(info.scope || '').split(/\s+/).filter(Boolean),
+      caducaEnMin: Math.round(Number(info.expires_in || 0) / 60)
     };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };

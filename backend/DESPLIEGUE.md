@@ -218,8 +218,13 @@ con el backend»).
 4. VS Code recibe ese enlace y guarda, cifrado (`context.secrets`, nunca
    en un ajuste), tanto ese token de sesión como el botón pasa a
    «✓ Conectado».
-5. La sesión caduca a las 24h: el botón «Conectar» reaparece y hay que
-   repetir el paso 2 (no hace falta tocar ajustes ni reabrir el panel).
+5. Con sesión activa, el botón muestra «✓ Conectado · renovar» y sigue
+   siendo pulsable: renovarla acuña un token fresco. **Renueva siempre
+   tras cualquier redespliegue del backend** (el token guardado se acuñó
+   con la configuración anterior) y cuando caduque el token compartido
+   (~1h) o la sesión propia (24h). Tras cada conexión, un aviso de VS
+   Code resume el token acuñado (identidad, scopes, caducidad) — si en
+   vez de eso sale un aviso amarillo, ahí está la causa exacta.
 
 Si el navegador no vuelve solo a VS Code (algunos SO piden confirmar
 «¿Abrir Visual Studio Code?» la primera vez), la página de resultado
