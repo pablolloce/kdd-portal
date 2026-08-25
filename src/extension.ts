@@ -340,6 +340,13 @@ async function openPortalPanel(
     return;
   }
 
+  // Todo lo async ANTES de crear el panel: createWebviewPanel() y la
+  // primera asignación de webview.html deben quedar en el mismo tick,
+  // igual que antes de este cambio — meter un await de por medio dio
+  // "Could not register service worker: InvalidStateError" en pruebas
+  // reales (carrera en la inicialización del documento del webview).
+  const session = await getStoredSession(context);
+
   const panel = vscode.window.createWebviewPanel(
     'kddPortal',
     'KDD Portal',
@@ -358,7 +365,6 @@ async function openPortalPanel(
   const version = String(
     (context.extension.packageJSON as { version?: string }).version ?? ''
   );
-  const session = await getStoredSession(context);
   panel.webview.html = getWebviewContent(
     panel.webview,
     context.extensionUri,
