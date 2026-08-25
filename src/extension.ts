@@ -409,7 +409,7 @@ async function callBackendReal(
   };
 
   if (message.payload) {
-    const res = await fetch(cfg.appsScriptUrl, {
+    const res = await fetchSiguiendoRedirect(cfg.appsScriptUrl, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(Object.assign({}, campos, message.payload))
@@ -423,8 +423,38 @@ async function callBackendReal(
       url.searchParams.set(k, v);
     }
   }
-  const res = await fetch(url.toString(), { headers });
+  const res = await fetchSiguiendoRedirect(url.toString(), { headers });
   return res.json();
+}
+
+/**
+ * fetch() que sigue las redirecciones a mano, reenviando SIEMPRE las
+ * mismas cabeceras (incluida Authorization). Apps Script redirige
+ * script.google.com → script.googleusercontent.com para el contenido
+ * real; con redirect:'follow' normal, fetch() sigue esa redirección pero
+ * QUITA la cabecera Authorization al cambiar de origen (comportamiento
+ * estándar de seguridad de fetch) — así que el Bearer nunca llegaba a la
+ * ejecución real del script, solo al primer salto (que no lo necesita
+ * para redirigir). Aquí decidimos nosotros mandarla también en el
+ * segundo salto, que es justo lo que hace falta para este caso.
+ */
+async function fetchSiguiendoRedirect(
+  url: string,
+  init: { method?: string; headers: Record<string, string>; body?: string }
+): Promise<Response> {
+  let actual = url;
+  for (let saltos = 0; saltos < 5; saltos++) {
+    const res = await fetch(actual, { ...init, redirect: 'manual' });
+    if (res.status < 300 || res.status >= 400) {
+      return res;
+    }
+    const location = res.headers.get('location');
+    if (!location) {
+      return res;
+    }
+    actual = new URL(location, actual).toString();
+  }
+  throw new Error('Demasiadas redirecciones al llamar al backend');
 }
 
 // ──────────────────────────────────────────────────────────── Webview ──
