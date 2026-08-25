@@ -194,7 +194,7 @@ elijas, respetando su TeamId):
   Es el comportamiento esperado del despliegue por fases; al incorporar
   cada equipo, basta con completar su fila en `Config`.
 
-## 6ter. Conectar tu sesión (login real, v0.10.0)
+## 6ter. Conectar tu sesión (login real, v0.10.0/v0.11.0)
 
 Con la Web App desplegada como «Cualquier usuario de tu dominio» (5bis),
 `kddPortal.emailUsuario` sigue siendo obligatorio para abrir el panel
@@ -215,18 +215,55 @@ con el backend»).
    cuadra, crea una fila en la hoja `Sesiones` (token aleatorio, válido
    `CONFIG.SESSION_HOURS` horas — 24 por defecto) y la página redirige
    de vuelta a VS Code (`vscode://kdd-demo.kdd-portal/auth?data=…`).
-4. VS Code recibe ese enlace, guarda el token de sesión de forma
-   cifrada (`context.secrets`, no en un ajuste) y el botón pasa a
-   «✓ Conectado». A partir de aquí, todas las llamadas del webview
-   llevan ese token y el backend resuelve tu email real con él —
-   `kddPortal.emailUsuario` deja de usarse para las llamadas (sigue
-   marcando qué se muestra ANTES de conectar).
+4. VS Code recibe ese enlace y guarda, cifrado (`context.secrets`, nunca
+   en un ajuste), tanto ese token de sesión como el botón pasa a
+   «✓ Conectado».
 5. La sesión caduca a las 24h: el botón «Conectar» reaparece y hay que
    repetir el paso 2 (no hace falta tocar ajustes ni reabrir el panel).
 
 Si el navegador no vuelve solo a VS Code (algunos SO piden confirmar
 «¿Abrir Visual Studio Code?» la primera vez), la página de resultado
 también tiene un botón «Volver a VS Code» para pulsar a mano.
+
+### ⚠️ Por qué esto no basta por sí solo (y qué hace de verdad falta)
+
+Se probó primero solo con el token de sesión propio (el del paso 3) y
+**se confirmó, desplegando y probando de verdad, que no basta**: la
+puerta de acceso por dominio la impone la infraestructura de Google, a
+nivel de transporte, ANTES de que el código de Apps Script llegue a
+ejecutarse. Ningún parámetro propio (`sessionToken`, `token`…) es visible
+para esa puerta — solo cuentan cookies de un navegador real o un token
+OAuth real de Google en la cabecera `Authorization`.
+
+Por eso `action=auth` TAMBIÉN devuelve `ScriptApp.getOAuthToken()` — un
+token OAuth real, pero de la cuenta que **despliega** el script (paso 4
+de la sección 3), no de quien de verdad está usando la extensión — como
+`sharedBearerToken`. El webview ya no llama a Apps Script directamente
+(se lo pide a la extensión por mensajes internos); es la extensión,
+desde Node.js, quien hace el `fetch` de verdad y manda ese token como
+cabecera `Authorization: Bearer` — así sí se supera la puerta, sin tocar
+Google Cloud Console. El `sessionToken` sigue siendo el que decide QUIÉN
+eres dentro de la app (`resolveEmail_`); el Bearer solo abre la puerta.
+
+**Esto es un trade-off deliberado, no un descuido**, elegido porque no
+había forma de crear un cliente OAuth propio en Cloud Console para este
+proyecto. Impactos a tener en cuenta:
+
+- Es tu credencial personal de Google (la de quien despliega), compartida
+  con quien use la extensión — mientras sea válida, sirve para llamar a
+  cualquier API de Google con TUS permisos (Sheets, Calendar, Gmail,
+  Drive), no solo para esta Web App.
+- Caduca en ~1h (lo gestiona Google); todavía no hay refresco automático,
+  así que toca volver a pulsar «Conectar» con esa frecuencia — más a
+  menudo que las 24h de la sesión propia.
+- Si esto va a usarlo más gente que tú (no solo tu propia validación),
+  la vía correcta es sustituirlo por un **Client ID de OAuth propio de
+  la app** (Google Cloud Console → Credenciales → tipo «Aplicación de
+  escritorio», sin necesidad de client secret real; ámbito
+  `openid email profile`, sin permisos de Drive/Sheets/Gmail — Apps
+  Script sigue haciendo ese trabajo con su propia identidad como hasta
+  ahora). Requiere que alguien con acceso a Cloud Console lo cree una
+  vez; no hace falta que sea la misma persona que despliega el backend.
 
 ## 7. Knowledge Base real (v0.9.0): Drive → local + Copilot
 

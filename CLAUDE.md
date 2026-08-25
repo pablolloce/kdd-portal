@@ -116,22 +116,42 @@ real da 27.687,25 h). Sin SDATOOL → usar `non_sda_project` como proyecto
   (spreadsheet del portal + setup(), hoja Config/Usuarios/Sesiones, Web
   App, groups, carpetas KB de Drive, calendario, verificación con
   ?action=).
-- **Login real (v0.10.0, `backend/auth.gs` + botón «Conectar»)**: la Web
-  App normalmente se despliega restringida al dominio («Cualquier
+- **Login real (v0.10.0/v0.11.0, `backend/auth.gs` + botón «Conectar»)**:
+  la Web App normalmente se despliega restringida al dominio («Cualquier
   usuario de tu dominio») — algunos Workspace corporativos ni siquiera
-  ofrecen «Cualquier persona» como opción. El webview hace `fetch` SIN
-  cookies de Google, así que sin más no supera esa puerta. Solución: el
-  botón «Conectar» de la barra superior abre `action=auth` en el
-  **navegador del sistema** (`vscode.env.openExternal`, no el panel);
-  ese navegador SÍ lleva la sesión de Google, así que dentro del script
-  `Session.getActiveUser().getEmail()` identifica a la persona de forma
-  fiable. Se crea un token propio (hoja `Sesiones`, `CONFIG.SESSION_HOURS`
-  = 24h) y una página redirige a `vscode://kdd-demo.kdd-portal/auth?data=…`
-  (`registerUriHandler` en extension.ts, anti-replay con `state`). El
-  webview manda ese `sessionToken` en cada llamada real; el backend
-  prioriza el email verificado por sesión sobre el `email` que manda el
-  cliente (`resolveEmail_`, compatible hacia atrás sin sesión). NO usa
-  OAuth de Google ni cliente en Cloud Console — solo Apps Script.
+  ofrecen «Cualquier persona» como opción (el caso real de despliegue de
+  este proyecto). El botón «Conectar» de la barra superior abre
+  `action=auth` en el **navegador del sistema** (`vscode.env.openExternal`,
+  no el panel); ese navegador SÍ lleva la sesión de Google, así que dentro
+  del script `Session.getActiveUser().getEmail()` identifica a la persona
+  de forma fiable. Se crea un token propio (hoja `Sesiones`,
+  `CONFIG.SESSION_HOURS` = 24h) y una página redirige a
+  `vscode://kdd-demo.kdd-portal/auth?data=…` (`registerUriHandler` en
+  extension.ts, anti-replay con `state`).
+  **Probado y confirmado que un `sessionToken` propio, por sí solo, NO
+  basta** para las llamadas posteriores: la puerta de acceso por dominio
+  la impone Google a nivel de transporte, antes de que el código de Apps
+  Script llegue a ejecutarse — ni el `sessionToken` ni ningún parámetro
+  propio la satisfacen, solo cookies de navegador real o un token OAuth
+  real de Google. Por eso `action=auth` TAMBIÉN devuelve
+  `ScriptApp.getOAuthToken()` (token real, pero de quien despliega el
+  script, no de quien llama) como `sharedBearerToken`; el webview ya NO
+  llama a Apps Script directamente (CSP `connect-src` es `'none'`) — se
+  lo pide a la extensión por `postMessage` (`apiCall`/`apiResult`), y
+  `callBackendReal` en extension.ts hace el `fetch` desde Node.js (sin
+  CORS, así se puede mandar `Authorization: Bearer` sin que Apps Script
+  necesite soportar *preflight*). `resolveEmail_` en el backend sigue
+  siendo quien identifica a la persona real por su `sessionToken` — el
+  Bearer solo abre la puerta de transporte, no decide identidad.
+  **TRADE-OFF DELIBERADO, no un descuido**: es la credencial OAuth
+  personal de quien despliega, compartida entre todos los que usen la
+  extensión — se eligió así porque no hay acceso a Google Cloud Console
+  para crear un cliente OAuth propio de la app. Caduca en ~1h sin
+  refresco automático todavía (hay que volver a pulsar «Conectar»). Si
+  esto pasa a usarlo más gente, migrar a un Client ID de OAuth propio
+  (ámbito `openid email profile`, sin permisos de Drive/Sheets/Gmail:
+  Apps Script sigue haciendo ese trabajo con su propia identidad) es la
+  vía correcta — ver el aviso completo en `backend/DESPLIEGUE.md` 6ter.
 - **Hito pendiente (KB-Copilot)**: la pestaña KB responde con el mock
   incluso en modo real. Falta: sincronizar la KB Drive→local
   (`getKbIndex`/`getKbFile` ya existen en el backend) y responder con

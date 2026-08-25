@@ -135,7 +135,29 @@ function handleAuthLogin_(p) {
   }
 
   var token = crearSesion_(email);
-  return authLandingPage_({ state: state, ok: true, sessionToken: token, email: email });
+
+  // Token OAuth REAL (de quien ejecuta el script, no de quien llama) para
+  // que las llamadas normales del webview superen la puerta de acceso por
+  // dominio: se manda como Authorization: Bearer desde el lado Node.js de
+  // la extensión (sin CORS). sessionToken sigue siendo quien de verdad
+  // identifica a la persona (resolveEmail_) — este token solo abre la
+  // puerta de transporte. Caduca en ~1h (lo gestiona Apps Script); ver
+  // action=refreshSharedToken y el aviso de DESPLIEGUE.md sobre este
+  // trade-off (credencial personal compartida, no un cliente OAuth propio).
+  var sharedBearerToken = '';
+  try {
+    sharedBearerToken = ScriptApp.getOAuthToken();
+  } catch (err) {
+    Logger.log('No se pudo obtener ScriptApp.getOAuthToken(): ' + err);
+  }
+
+  return authLandingPage_({
+    state: state,
+    ok: true,
+    sessionToken: token,
+    email: email,
+    sharedBearerToken: sharedBearerToken
+  });
 }
 
 /** Página HTML mínima y autocontenida que redirige a VS Code con el resultado. */

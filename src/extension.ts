@@ -83,6 +83,24 @@ interface UserInfo {
 interface StoredSession {
   token: string;
   email: string;
+  /**
+   * Token OAuth REAL de Google (ScriptApp.getOAuthToken() en el backend —
+   * la identidad de quien despliega, no la de quien llama). TRADE-OFF
+   * DELIBERADO mientras no haya Client ID propio en Cloud Console: es una
+   * credencial personal compartida, no un cliente OAuth de la app — ver
+   * el aviso en DESPLIEGUE.md 6ter. Caduca en ~1h; sin refresco automático
+   * todavía (toca volver a pulsar «Conectar»).
+   */
+  sharedBearerToken?: string;
+}
+
+interface ApiCallMessage {
+  reqId: string;
+  action: string;
+  team?: string;
+  email?: string;
+  name?: string;
+  payload?: Record<string, unknown> | null;
 }
 
 const SESSION_SECRET_KEY = 'kddPortal.sesion';
@@ -288,6 +306,7 @@ async function handleAuthCallback(
     sessionToken?: string;
     email?: string;
     error?: string;
+    sharedBearerToken?: string;
   };
   try {
     payload = JSON.parse(Buffer.from(dataParam, 'base64').toString('utf-8'));
@@ -318,14 +337,94 @@ async function handleAuthCallback(
   };
 
   if (payload.ok && payload.sessionToken && payload.email) {
-    await storeSession(context, { token: payload.sessionToken, email: payload.email });
+    await storeSession(context, {
+      token: payload.sessionToken,
+      email: payload.email,
+      sharedBearerToken: payload.sharedBearerToken
+    });
     void vscode.window.showInformationMessage(`KDD Portal: conectado como ${payload.email}.`);
-    post({ type: 'loginOk', email: payload.email, sessionToken: payload.sessionToken });
+    post({ type: 'loginOk', email: payload.email });
   } else {
     const motivo = payload.error || 'error desconocido';
     void vscode.window.showErrorMessage(`KDD Portal: no se pudo conectar (${motivo}).`);
     post({ type: 'loginError', error: motivo });
   }
+}
+
+// ────────────────────────────────────────── Llamadas reales (proxy Node) ──
+//  El webview ya no llama a Apps Script directamente: se lo pide a la
+//  extensión (postMessage), que hace el fetch desde Node.js. Dos motivos:
+//  no hay CORS en Node (así se puede mandar Authorization: Bearer, algo
+//  que el navegador del webview bloquearía con preflight — Apps Script no
+//  lo soporta) y así el sharedBearerToken nunca sale de la extensión.
+
+/** Atiende un 'apiCall' del webview: hace el fetch real y responde 'apiResult'. */
+async function handleApiCall(
+  context: vscode.ExtensionContext,
+  message: ApiCallMessage,
+  post: (m: unknown) => void
+): Promise<void> {
+  try {
+    const data = await callBackendReal(context, message);
+    post({ type: 'apiResult', reqId: message.reqId, data });
+  } catch (err) {
+    post({
+      type: 'apiResult',
+      reqId: message.reqId,
+      data: { ok: false, error: err instanceof Error ? err.message : String(err) }
+    });
+  }
+}
+
+/**
+ * Fetch real a Apps Script desde Node.js (sin CORS): adjunta
+ * Authorization: Bearer con el sharedBearerToken de la sesión cuando
+ * existe — es lo que de verdad supera la puerta de acceso por dominio de
+ * Google (un sessionToken propio, viajando en la URL o el body, no basta:
+ * la puerta la impone Google al nivel de transporte, antes de que el
+ * código de Apps Script llegue a ejecutarse).
+ */
+async function callBackendReal(
+  context: vscode.ExtensionContext,
+  message: ApiCallMessage
+): Promise<unknown> {
+  const cfg = getPortalConfig();
+  if (!cfg.appsScriptUrl) {
+    return { ok: false, error: 'Falta configurar el ajuste kddPortal.appsScriptUrl' };
+  }
+
+  const session = await getStoredSession(context);
+  const headers: Record<string, string> = {};
+  if (session?.sharedBearerToken) {
+    headers.Authorization = `Bearer ${session.sharedBearerToken}`;
+  }
+
+  const campos: Record<string, string> = {
+    action: message.action,
+    team: message.team || '',
+    email: message.email || cfg.emailUsuario,
+    name: message.name || '',
+    token: cfg.tokenAcceso,
+    sessionToken: session?.token || ''
+  };
+
+  if (message.payload) {
+    const res = await fetch(cfg.appsScriptUrl, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({}, campos, message.payload))
+    });
+    return res.json();
+  }
+
+  const url = new URL(cfg.appsScriptUrl);
+  for (const [k, v] of Object.entries(campos)) {
+    if (v) {
+      url.searchParams.set(k, v);
+    }
+  }
+  const res = await fetch(url.toString(), { headers });
+  return res.json();
 }
 
 // ──────────────────────────────────────────────────────────── Webview ──
@@ -385,6 +484,11 @@ async function openPortalPanel(
       teamNombre?: string;
       question?: string;
       foreign?: boolean;
+      action?: string;
+      team?: string;
+      email?: string;
+      name?: string;
+      payload?: Record<string, unknown> | null;
     }) => {
       const post = (m: unknown) => void panel.webview.postMessage(m);
 
@@ -399,6 +503,12 @@ async function openPortalPanel(
       // panel — ver beginLogin y handleAuthCallback más abajo.
       if (message.type === 'iniciarLogin') {
         void beginLogin(context, panel);
+      }
+      // Llamada real al backend (modo real): la hace la extensión (Node.js,
+      // sin CORS) para poder mandar el token compartido como
+      // Authorization: Bearer — ver handleApiCall más abajo.
+      if (message.type === 'apiCall' && message.action && message.reqId) {
+        void handleApiCall(context, message as ApiCallMessage, post);
       }
       // Clic en una fuente citada por la Knowledge Base: en modo real abre
       // el documento local sincronizado; en demo, una notificación.
@@ -501,19 +611,23 @@ function getWebviewContent(
     token: portal.tokenAcceso,
     rutaKb: portal.rutaKb,
     version,
-    sesion: session ?? null
+    // Solo el email, para la UI del botón «Conectar»: el sessionToken y
+    // el token OAuth compartido son sensibles y ya no hace falta que
+    // salgan de la extensión (el webview ya no llama a Apps Script
+    // directamente, se lo pide a la extensión — ver apiReal en main.js).
+    sesion: session ? { email: session.email } : null
   }).replace(/</g, '\\u003c');
 
   // CSP: solo recursos locales de la extensión + nonce para los scripts.
-  // connect-src ya incluye los dominios de Apps Script para cuando se
-  // desactive el modo mock (las peticiones fetch reales irán ahí).
+  // connect-src es 'none': el webview ya no hace fetch directo a Apps
+  // Script (lo hace la extensión por Node.js, sin CORS — ver
+  // callBackendReal), así que no necesita permiso de red saliente.
   const csp = [
     "default-src 'none'",
     `img-src ${webview.cspSource} data:`,
     `style-src ${webview.cspSource}`,
     `font-src ${webview.cspSource}`,
-    `script-src 'nonce-${nonce}'`,
-    'connect-src https://script.google.com https://script.googleusercontent.com'
+    `script-src 'nonce-${nonce}'`
   ].join('; ');
 
   return `<!DOCTYPE html>

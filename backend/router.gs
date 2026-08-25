@@ -29,15 +29,26 @@
  *  cliente envía los POST como text/plain (sin preflight, que Apps Script
  *  no soporta) con el JSON en el body.
  *
- *  ACCESO POR DOMINIO Y LOGIN: ver DESPLIEGUE.md 5bis y auth.gs — el
+ *  ACCESO POR DOMINIO Y LOGIN: ver DESPLIEGUE.md 5bis/6ter y auth.gs — el
  *  webview no tiene sesión de Google, así que con la Web App restringida
  *  al dominio, la extensión pasa primero por action=auth (navegador real
  *  del usuario) antes de poder llamar al resto de acciones con éxito.
+ *  Un sessionToken válido NO basta para superar esa puerta por sí solo
+ *  (Google la exige a nivel de transporte, antes de que este código se
+ *  ejecute): action=auth también entrega un sharedBearerToken real
+ *  (ScriptApp.getOAuthToken(), la identidad de quien despliega, no de
+ *  quien llama) que el lado Node.js de la extensión manda como
+ *  Authorization: Bearer en cada llamada — ES UN TRADE-OFF DELIBERADO
+ *  (credencial personal compartida, no un cliente OAuth propio; caduca
+ *  en ~1h, refrescable con action=refreshSharedToken) mientras no haya
+ *  Client ID de Cloud Console disponible. Ver el aviso completo en
+ *  DESPLIEGUE.md 6ter.
  *
  *  ACCIONES
  *  ────────
  *   GET  ?action=ping
  *   GET  ?action=auth&state=…                 → HTML (login, ver auth.gs)
+ *   GET  ?action=refreshSharedToken            → { sharedBearerToken }
  *   GET  ?action=getUserInfo&email=…          → { team }
  *   GET  ?action=getTeams                     → { teams[] } (hoja Config)
  *   GET  ?action=getChat&team=…               → { messages[] }
@@ -89,6 +100,12 @@ function doGet(e) {
     switch (p.action || '') {
       case 'ping':
         return jsonOut_({ ok: true, pong: new Date().toISOString() });
+      case 'refreshSharedToken':
+        // Llegar hasta aquí ya exigía un Bearer válido (o cookies de
+        // navegador) para superar la puerta de acceso por dominio, así
+        // que no hace falta comprobar nada más: solo se pide una copia
+        // fresca del mismo token compartido antes de que caduque (~1h).
+        return jsonOut_({ ok: true, sharedBearerToken: ScriptApp.getOAuthToken() });
       case 'getUserInfo':
         return jsonOut_({ ok: true, team: getUserTeam_(p.email) });
       case 'getTeams':

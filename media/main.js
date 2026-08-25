@@ -63,10 +63,16 @@
    * Sesión real del login (backend/auth.gs, action=auth): { token, email }
    * o null mientras no se ha conectado. La inyecta la extensión si ya
    * había una guardada (context.secrets); se actualiza en vivo al recibir
-   * el mensaje 'loginOk' (ver wireLogin). api() la adjunta como
-   * sessionToken en cada llamada real cuando existe.
+   * el mensaje 'loginOk' (ver wireLogin). Aquí en el webview solo se usa
+   * para la UI del botón «Conectar» — la extensión guarda por su cuenta
+   * el sessionToken y el token OAuth compartido, y es quien de verdad
+   * llama a Apps Script (ver apiReal más abajo).
    */
   let sesion = CONFIG.sesion || null;
+
+  /** Peticiones 'apiCall' pendientes de respuesta de la extensión. */
+  let apiReqSeq = 0;
+  const apiPending = {};
 
   // ──────────────────────────────────────────────────────────── Utilidades ──
 
@@ -836,28 +842,30 @@
         error: 'Falta configurar el ajuste kddPortal.appsScriptUrl'
       };
     }
-    if (payload) {
-      const res = await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(Object.assign(
-          { action: action, team: teamId, email: USER.email,
-            name: USER.name, token: ACCESS_TOKEN,
-            sessionToken: sesion ? sesion.token : '' },
-          payload
-        ))
+    // La llamada de verdad la hace la extensión (Node.js, sin CORS): así
+    // puede mandar el token compartido como Authorization: Bearer, algo
+    // que el navegador del webview bloquearía con preflight (Apps Script
+    // no lo soporta). El webview solo pide la acción; la extensión añade
+    // sessionToken/tokenAcceso/el Bearer por su cuenta (ver
+    // callBackendReal en extension.ts).
+    return apiReal(action, teamId, payload);
+  }
+
+  /** Pide a la extensión que llame a Apps Script y espera 'apiResult'. */
+  function apiReal(action, teamId, payload) {
+    return new Promise(function (resolve) {
+      const reqId = 'api' + (++apiReqSeq);
+      apiPending[reqId] = resolve;
+      vscode.postMessage({
+        type: 'apiCall',
+        reqId: reqId,
+        action: action,
+        team: teamId,
+        email: USER.email,
+        name: USER.name,
+        payload: payload || null
       });
-      return res.json();
-    }
-    const url =
-      APPS_SCRIPT_URL +
-      '?action=' + encodeURIComponent(action) +
-      '&team=' + encodeURIComponent(teamId) +
-      '&email=' + encodeURIComponent(USER.email) +
-      (ACCESS_TOKEN ? '&token=' + encodeURIComponent(ACCESS_TOKEN) : '') +
-      (sesion ? '&sessionToken=' + encodeURIComponent(sesion.token) : '');
-    const res = await fetch(url);
-    return res.json();
+    });
   }
 
   // ─────────────────────────────────────────────────────── Estado de la UI ──
@@ -2188,7 +2196,11 @@
     window.addEventListener('message', function (event) {
       const msg = (event && event.data) || {};
       if (msg.type === 'loginOk') {
-        sesion = { token: msg.sessionToken, email: msg.email };
+        // El token en sí (sessionToken + el Bearer compartido) se queda
+        // en la extensión — aquí solo hace falta saber que hay sesión y
+        // el email, para la UI del botón. api() ya no lo necesita: cada
+        // llamada real se la pide a la extensión (ver apiReal).
+        sesion = { email: msg.email };
         actualizarBotonConectar();
         toast('✓ Conectado como ' + msg.email);
         // Primer login tras un loadTeams() fallido: init() no llegó a
@@ -2200,6 +2212,12 @@
       } else if (msg.type === 'loginError') {
         actualizarBotonConectar();
         toastError('Conectar', msg.error);
+      } else if (msg.type === 'apiResult' && msg.reqId) {
+        const resolve = apiPending[msg.reqId];
+        if (resolve) {
+          delete apiPending[msg.reqId];
+          resolve(msg.data);
+        }
       }
     });
   }
