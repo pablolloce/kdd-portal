@@ -344,6 +344,33 @@ async function handleAuthCallback(
     });
     void vscode.window.showInformationMessage(`KDD Portal: conectado como ${payload.email}.`);
     post({ type: 'loginOk', email: payload.email });
+
+    // Chequeo inmediato del token compartido (tokeninfo): si no lleva el
+    // scope de identidad, la puerta del dominio va a rechazarlo — mejor
+    // decirlo ahora, con la causa, que dejar que falle el primer getTeams.
+    if (payload.sharedBearerToken) {
+      const sonda = await probarTokenCompartido(payload.sharedBearerToken);
+      if ('error' in sonda) {
+        void vscode.window.showWarningMessage(
+          `KDD Portal: el token compartido no valida contra Google (${sonda.error}). ` +
+            'Las llamadas al backend probablemente fallarán.'
+        );
+      } else if (!sonda.email) {
+        void vscode.window.showWarningMessage(
+          'KDD Portal: el token compartido NO lleva el scope de identidad ' +
+            '(userinfo.email), así que la puerta de acceso por dominio lo va a ' +
+            'rechazar. Falta re-autorizar el proyecto de Apps Script: repega ' +
+            'backend/appsscript.json, ejecuta setup() y publica Nueva versión ' +
+            '(DESPLIEGUE.md 6ter). Scopes actuales del token: ' +
+            sonda.scopes.map((s) => s.split('/').pop()).join(', ')
+        );
+      }
+    } else {
+      void vscode.window.showWarningMessage(
+        'KDD Portal: el backend no devolvió el token compartido — ¿está la ' +
+          'última versión de backend/auth.gs desplegada (Nueva versión)?'
+      );
+    }
   } else {
     const motivo = payload.error || 'error desconocido';
     void vscode.window.showErrorMessage(`KDD Portal: no se pudo conectar (${motivo}).`);
@@ -383,6 +410,15 @@ async function handleApiCall(
  * Google (un sessionToken propio, viajando en la URL o el body, no basta:
  * la puerta la impone Google al nivel de transporte, antes de que el
  * código de Apps Script llegue a ejecutarse).
+ *
+ * Redirecciones: fetch normal con redirect:'follow'. La puerta se evalúa
+ * en el PRIMER salto (script.google.com); el segundo
+ * (script.googleusercontent.com) es una URL firmada de un solo uso que no
+ * necesita la cabecera — que fetch la recorte ahí al cruzar de origen es
+ * irrelevante. (Se probó seguir la redirección a mano reenviando la
+ * cabecera y no cambia nada: si el primer salto rechaza el token, ya no
+ * hay contenido firmado que recoger. Es el mismo transporte que usa la
+ * extensión de NFQ, verificado en su bundle.)
  */
 async function callBackendReal(
   context: vscode.ExtensionContext,
@@ -409,10 +445,11 @@ async function callBackendReal(
   };
 
   if (message.payload) {
-    const res = await fetchSiguiendoRedirect(cfg.appsScriptUrl, {
+    const res = await fetch(cfg.appsScriptUrl, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(Object.assign({}, campos, message.payload))
+      body: JSON.stringify(Object.assign({}, campos, message.payload)),
+      redirect: 'follow'
     });
     return parseJsonODiagnostico(res);
   }
@@ -423,16 +460,15 @@ async function callBackendReal(
       url.searchParams.set(k, v);
     }
   }
-  const res = await fetchSiguiendoRedirect(url.toString(), { headers });
+  const res = await fetch(url.toString(), { headers, redirect: 'follow' });
   return parseJsonODiagnostico(res);
 }
 
 /**
- * Igual que res.json(), pero si el cuerpo no es JSON (p. ej. Google
- * devolviendo su propia página en vez de dejar pasar la petición),
- * devuelve el HTTP status, la URL final y el principio del cuerpo en vez
- * de solo "Unexpected token '<'..." — necesario para saber exactamente en
- * qué punto se queda corta la autenticación por Bearer compartido.
+ * Igual que res.json(), pero si el cuerpo no es JSON (Google devolviendo
+ * su propia página en vez de dejar pasar la petición), clasifica el HTML
+ * en una causa accionable — el mismo triaje que hace la extensión de NFQ
+ * con este mismo patrón de backend.
  */
 async function parseJsonODiagnostico(res: Response): Promise<unknown> {
   const text = await res.text();
@@ -442,41 +478,80 @@ async function parseJsonODiagnostico(res: Response): Promise<unknown> {
     return {
       ok: false,
       error:
-        `Google respondió su propia página (HTTP ${res.status} desde ${res.url}) ` +
-        `en vez de dejar pasar la petición a Apps Script — sesión caducada o ` +
-        `deployment mal configurado. Primeros 300 caracteres: ${text.slice(0, 300)}`
+        clasificarHtmlDeGoogle(res.status, res.url, text) +
+        ` [HTTP ${res.status} desde ${res.url}. Extracto: ` +
+        `${text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200)}]`
     };
   }
 }
 
-/**
- * fetch() que sigue las redirecciones a mano, reenviando SIEMPRE las
- * mismas cabeceras (incluida Authorization). Apps Script redirige
- * script.google.com → script.googleusercontent.com para el contenido
- * real; con redirect:'follow' normal, fetch() sigue esa redirección pero
- * QUITA la cabecera Authorization al cambiar de origen (comportamiento
- * estándar de seguridad de fetch) — así que el Bearer nunca llegaba a la
- * ejecución real del script, solo al primer salto (que no lo necesita
- * para redirigir). Aquí decidimos nosotros mandarla también en el
- * segundo salto, que es justo lo que hace falta para este caso.
- */
-async function fetchSiguiendoRedirect(
-  url: string,
-  init: { method?: string; headers: Record<string, string>; body?: string }
-): Promise<Response> {
-  let actual = url;
-  for (let saltos = 0; saltos < 5; saltos++) {
-    const res = await fetch(actual, { ...init, redirect: 'manual' });
-    if (res.status < 300 || res.status >= 400) {
-      return res;
-    }
-    const location = res.headers.get('location');
-    if (!location) {
-      return res;
-    }
-    actual = new URL(location, actual).toString();
+/** Triaje del HTML que devuelve Google cuando la petición no llega al script. */
+function clasificarHtmlDeGoogle(
+  status: number,
+  finalUrl: string,
+  text: string
+): string {
+  const u = (text + ' ' + finalUrl).toLowerCase();
+  if (
+    /accounts\.google\.com|servicelogin|\bsign in\b|iniciar sesi|saml|\/idp\.|idp\./.test(u)
+  ) {
+    return (
+      'Google redirigió al login: no aceptó el token de la cabecera. ' +
+      'Causa típica: el token no lleva el scope de identidad (userinfo.email) — ' +
+      'repega backend/appsscript.json, ejecuta setup() para RE-AUTORIZAR, ' +
+      'publica Nueva versión y vuelve a pulsar «Conectar».'
+    );
   }
-  throw new Error('Demasiadas redirecciones al llamar al backend');
+  if (/authorization is required|se requiere autorizaci|authorization required/.test(u)) {
+    return (
+      'Google exige re-autorizar el proyecto: el token no cubre los scopes ' +
+      'del manifiesto. Ejecuta setup() desde el editor de Apps Script, acepta ' +
+      'los permisos y vuelve a Conectar.'
+    );
+  }
+  if (/you need access|no tienes acceso|unable to open the file|no se puede abrir/.test(u)) {
+    return (
+      'Esta cuenta no puede EJECUTAR esa implementación (Google lo muestra ' +
+      'como acceso denegado). Revisa «Quién tiene acceso» en la implementación.'
+    );
+  }
+  return (
+    'Google respondió su propia página en vez de dejar pasar la petición a ' +
+    'Apps Script — sesión caducada o deployment mal configurado.'
+  );
+}
+
+/**
+ * Valida el token compartido contra el endpoint público tokeninfo de
+ * Google (mismo truco que la extensión de NFQ): confirma que es un token
+ * vivo, con qué scopes se acuñó y a qué email pertenece. Es la manera de
+ * distinguir «falta re-autorizar el manifiesto» de «la puerta rechaza un
+ * token correcto» sin adivinar.
+ */
+async function probarTokenCompartido(
+  token: string
+): Promise<{ email: string; scopes: string[] } | { error: string }> {
+  try {
+    const res = await fetch(
+      'https://oauth2.googleapis.com/tokeninfo?access_token=' +
+        encodeURIComponent(token)
+    );
+    const info = (await res.json()) as {
+      email?: string;
+      scope?: string;
+      error_description?: string;
+      error?: string;
+    };
+    if (!res.ok) {
+      return { error: info.error_description || info.error || `HTTP ${res.status}` };
+    }
+    return {
+      email: String(info.email || ''),
+      scopes: String(info.scope || '').split(/\s+/).filter(Boolean)
+    };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 // ──────────────────────────────────────────────────────────── Webview ──

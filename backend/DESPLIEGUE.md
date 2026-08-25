@@ -245,6 +245,30 @@ cabecera `Authorization: Bearer` — así sí se supera la puerta, sin tocar
 Google Cloud Console. El `sessionToken` sigue siendo el que decide QUIÉN
 eres dentro de la app (`resolveEmail_`); el Bearer solo abre la puerta.
 
+**El token DEBE llevar el scope de identidad `userinfo.email`** (ya
+incluido en `appsscript.json`): sin él, el Bearer no acredita QUIÉN lo
+porta, la puerta del dominio no puede comprobar que es alguien de la
+organización y redirige al login/SSO corporativo — se ve como «Google
+redirigió al login» o incluso un error del IdP SAML («Unsupported
+Browser / mandatory cookie»). Verificado replicando la extensión de
+NFQ, que exige exactamente ese scope en su token para este mismo patrón.
+Consecuencia práctica: **cada vez que cambien los `oauthScopes` del
+manifiesto hay que RE-AUTORIZAR el proyecto**:
+
+1. Pega el `appsscript.json` actualizado (Configuración del proyecto →
+   mostrar manifiesto).
+2. Ejecuta cualquier función desde el editor (p. ej. `setup()`): saltará
+   la pantalla de consentimiento con el permiso nuevo («Ver tu dirección
+   de correo electrónico») — acéptala con la cuenta que despliega.
+3. Implementar → Gestionar implementaciones → ✏️ → **Nueva versión**.
+4. En VS Code, pulsa **«Conectar»** otra vez: el token antiguo no lleva
+   el scope nuevo; hay que acuñar uno fresco.
+
+Tras conectar, la extensión valida el token contra
+`oauth2.googleapis.com/tokeninfo` y avisa si le falta el scope de
+identidad — si ves ese aviso, es que el paso 2 (re-autorizar) no se ha
+completado.
+
 **Esto es un trade-off deliberado, no un descuido**, elegido porque no
 había forma de crear un cliente OAuth propio en Cloud Console para este
 proyecto. Impactos a tener en cuenta:

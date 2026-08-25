@@ -143,6 +143,18 @@ real da 27.687,25 h). Sin SDATOOL → usar `non_sda_project` como proyecto
   necesite soportar *preflight*). `resolveEmail_` en el backend sigue
   siendo quien identifica a la persona real por su `sessionToken` — el
   Bearer solo abre la puerta de transporte, no decide identidad.
+  **El token DEBE acuñarse con el scope `userinfo.email`** (declarado en
+  `appsscript.json`; cambiar scopes del manifiesto obliga a RE-AUTORIZAR
+  el proyecto — ejecutar `setup()` — y publicar Nueva versión): sin
+  identidad en el token, la puerta del dominio rebota al SSO/SAML
+  corporativo. Se descubrió replicando la extensión de NFQ, que exige
+  ese mismo scope. Las redirecciones se siguen con `redirect:'follow'`
+  normal — la puerta se evalúa en el PRIMER salto y el segundo es una
+  URL firmada que no necesita cabeceras; NO reintroducir un seguidor
+  manual de redirecciones (rompe los POST). Tras cada login la extensión
+  sondea el token en `oauth2.googleapis.com/tokeninfo` y avisa si falta
+  el scope; los HTML de Google se triajean con causa accionable
+  (`clasificarHtmlDeGoogle` en extension.ts).
   **TRADE-OFF DELIBERADO, no un descuido**: es la credencial OAuth
   personal de quien despliega, compartida entre todos los que usen la
   extensión — se eligió así porque no hay acceso a Google Cloud Console
