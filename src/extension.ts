@@ -414,7 +414,7 @@ async function callBackendReal(
       headers: { ...headers, 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(Object.assign({}, campos, message.payload))
     });
-    return res.json();
+    return parseJsonODiagnostico(res);
   }
 
   const url = new URL(cfg.appsScriptUrl);
@@ -424,7 +424,29 @@ async function callBackendReal(
     }
   }
   const res = await fetchSiguiendoRedirect(url.toString(), { headers });
-  return res.json();
+  return parseJsonODiagnostico(res);
+}
+
+/**
+ * Igual que res.json(), pero si el cuerpo no es JSON (p. ej. Google
+ * devolviendo su propia página en vez de dejar pasar la petición),
+ * devuelve el HTTP status, la URL final y el principio del cuerpo en vez
+ * de solo "Unexpected token '<'..." — necesario para saber exactamente en
+ * qué punto se queda corta la autenticación por Bearer compartido.
+ */
+async function parseJsonODiagnostico(res: Response): Promise<unknown> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      ok: false,
+      error:
+        `Google respondió su propia página (HTTP ${res.status} desde ${res.url}) ` +
+        `en vez de dejar pasar la petición a Apps Script — sesión caducada o ` +
+        `deployment mal configurado. Primeros 300 caracteres: ${text.slice(0, 300)}`
+    };
+  }
 }
 
 /**
