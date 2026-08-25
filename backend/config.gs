@@ -38,10 +38,14 @@ var CONFIG = {
   /** Límite de tamaño al exportar un documento de la KB (caracteres). */
   KB_MAX_CHARS: 200000,
 
+  /** Horas de validez de una sesión creada por el login (action=auth). */
+  SESSION_HOURS: 24,
+
   SHEET_FORMACIONES: 'Formaciones',
   SHEET_ASISTENTES: 'Asistentes',
   SHEET_USUARIOS: 'Usuarios',
-  SHEET_CONFIG: 'Config'
+  SHEET_CONFIG: 'Config',
+  SHEET_SESIONES: 'Sesiones'
 };
 
 // ─────────────────────────────────── Config de equipos ──────
@@ -175,6 +179,12 @@ function setup() {
   if (!ss.getSheetByName(CONFIG.SHEET_ASISTENTES)) {
     ss.insertSheet(CONFIG.SHEET_ASISTENTES).appendRow([
       'FormacionID', 'Email', 'FechaInscripcion'
+    ]);
+  }
+  if (!ss.getSheetByName(CONFIG.SHEET_SESIONES)) {
+    // La rellena crearSesion_ (login vía action=auth); no tocarla a mano.
+    ss.insertSheet(CONFIG.SHEET_SESIONES).appendRow([
+      'Token', 'Email', 'CreadoEl', 'CaducaEl'
     ]);
   }
   // El informe TRA (proyectos y personas) vive en su propio spreadsheet:

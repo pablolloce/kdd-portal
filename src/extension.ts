@@ -14,6 +14,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import * as crypto from 'crypto';
 
 /**
  * MODO DE FUNCIONAMIENTO — se controla desde los AJUSTES de VS Code
@@ -71,7 +72,48 @@ interface UserInfo {
   email: string;
 }
 
+/**
+ * Sesión real obtenida vía login (action=auth, ver backend/auth.gs): el
+ * webview no tiene cookies de Google, así que con la Web App restringida
+ * al dominio necesita este token para superar la puerta de acceso — se
+ * consigue abriendo action=auth en el navegador del SISTEMA (que sí lleva
+ * la sesión), nunca desde el propio panel. Se guarda cifrado en
+ * context.secrets, nunca en un ajuste de VS Code.
+ */
+interface StoredSession {
+  token: string;
+  email: string;
+}
+
+const SESSION_SECRET_KEY = 'kddPortal.sesion';
+const LOGIN_TIMEOUT_MS = 60000;
+
 let currentPanel: vscode.WebviewPanel | undefined;
+
+/** Nonce del login en curso (anti-CSRF/replay) y su timeout de 60 s. */
+let pendingLoginState: string | undefined;
+let pendingLoginTimer: ReturnType<typeof setTimeout> | undefined;
+
+async function getStoredSession(
+  context: vscode.ExtensionContext
+): Promise<StoredSession | undefined> {
+  const raw = await context.secrets.get(SESSION_SECRET_KEY);
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(raw) as StoredSession;
+  } catch {
+    return undefined;
+  }
+}
+
+async function storeSession(
+  context: vscode.ExtensionContext,
+  session: StoredSession
+): Promise<void> {
+  await context.secrets.store(SESSION_SECRET_KEY, JSON.stringify(session));
+}
 
 // ─────────────────────────────────────────────────────────── Activación ──
 
@@ -82,7 +124,18 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!user) {
         return; // getUserSession ya avisó del motivo.
       }
-      openPortalPanel(context, user);
+      await openPortalPanel(context, user);
+    })
+  );
+
+  // Recibe la redirección vscode://<publisher>.<name>/auth?data=... que
+  // backend/auth.gs abre al terminar el login (ver beginLogin/6ter en
+  // DESPLIEGUE.md). Llega desde el navegador del SISTEMA, nunca del panel.
+  context.subscriptions.push(
+    vscode.window.registerUriHandler({
+      handleUri(uri: vscode.Uri) {
+        void handleAuthCallback(context, uri);
+      }
     })
   );
 
@@ -104,13 +157,15 @@ export function activate(context: vscode.ExtensionContext): void {
       if (event.affectsConfiguration('kddPortal') && currentPanel) {
         const user = await getUserSession();
         if (user) {
+          const session = await getStoredSession(context);
           currentPanel.webview.html = getWebviewContent(
             currentPanel.webview,
             context.extensionUri,
             user,
             String(
               (context.extension.packageJSON as { version?: string }).version ?? ''
-            )
+            ),
+            session
           );
         }
       }
@@ -169,12 +224,116 @@ async function getUserSession(): Promise<UserInfo | undefined> {
   return { name: nombre, email: config.emailUsuario };
 }
 
+/**
+ * Login real (backend/auth.gs, action=auth): abre action=auth en el
+ * navegador del SISTEMA (no en el webview, que no tiene sesión de Google)
+ * para superar la puerta de acceso de una Web App restringida al dominio.
+ * El resultado vuelve por registerUriHandler → handleAuthCallback.
+ */
+async function beginLogin(
+  context: vscode.ExtensionContext,
+  panel: vscode.WebviewPanel
+): Promise<void> {
+  const cfg = getPortalConfig();
+  if (!cfg.appsScriptUrl) {
+    void vscode.window.showErrorMessage(
+      'KDD Portal: falta configurar kddPortal.appsScriptUrl antes de conectar.'
+    );
+    return;
+  }
+
+  const state = crypto.randomUUID();
+  pendingLoginState = state;
+  if (pendingLoginTimer) {
+    clearTimeout(pendingLoginTimer);
+  }
+  pendingLoginTimer = setTimeout(() => {
+    if (pendingLoginState !== state) {
+      return; // ya se resolvió (o lo sustituyó un login más reciente).
+    }
+    pendingLoginState = undefined;
+    void panel.webview.postMessage({
+      type: 'loginError',
+      error:
+        'No se recibió respuesta en 60 s. ¿Cerraste la pestaña del navegador o ' +
+        'bloqueó la redirección a VS Code? Pulsa «Conectar» para reintentar.'
+    });
+  }, LOGIN_TIMEOUT_MS);
+
+  const url = new URL(cfg.appsScriptUrl);
+  url.searchParams.set('action', 'auth');
+  url.searchParams.set('state', state);
+  if (cfg.tokenAcceso) {
+    url.searchParams.set('token', cfg.tokenAcceso);
+  }
+  await vscode.env.openExternal(vscode.Uri.parse(url.toString()));
+}
+
+/** Procesa la redirección vscode://…/auth?data=… al terminar el login. */
+async function handleAuthCallback(
+  context: vscode.ExtensionContext,
+  uri: vscode.Uri
+): Promise<void> {
+  if (uri.path !== '/auth') {
+    return;
+  }
+  const dataParam = new URLSearchParams(uri.query).get('data');
+  if (!dataParam) {
+    return;
+  }
+
+  let payload: {
+    state?: string;
+    ok?: boolean;
+    sessionToken?: string;
+    email?: string;
+    error?: string;
+  };
+  try {
+    payload = JSON.parse(Buffer.from(dataParam, 'base64').toString('utf-8'));
+  } catch {
+    return;
+  }
+
+  if (pendingLoginTimer) {
+    clearTimeout(pendingLoginTimer);
+    pendingLoginTimer = undefined;
+  }
+  const estadoEsperado = pendingLoginState;
+  pendingLoginState = undefined;
+
+  // Anti-CSRF/replay: ignora cualquier callback que no case con un login
+  // que de verdad iniciamos (p. ej. un reintento tardío tras timeout).
+  if (!estadoEsperado || payload.state !== estadoEsperado) {
+    void vscode.window.showWarningMessage(
+      'KDD Portal: respuesta de login ignorada (no coincide con ningún intento en curso).'
+    );
+    return;
+  }
+
+  const post = (m: unknown) => {
+    if (currentPanel) {
+      void currentPanel.webview.postMessage(m);
+    }
+  };
+
+  if (payload.ok && payload.sessionToken && payload.email) {
+    await storeSession(context, { token: payload.sessionToken, email: payload.email });
+    void vscode.window.showInformationMessage(`KDD Portal: conectado como ${payload.email}.`);
+    post({ type: 'loginOk', email: payload.email, sessionToken: payload.sessionToken });
+  } else {
+    const motivo = payload.error || 'error desconocido';
+    void vscode.window.showErrorMessage(`KDD Portal: no se pudo conectar (${motivo}).`);
+    post({ type: 'loginError', error: motivo });
+  }
+}
+
 // ──────────────────────────────────────────────────────────── Webview ──
 
-function openPortalPanel(
+async function openPortalPanel(
   context: vscode.ExtensionContext,
   user: UserInfo
-): void {
+): Promise<void> {
   // Si el panel ya existe, lo traemos al frente en vez de duplicarlo.
   if (currentPanel) {
     currentPanel.reveal(vscode.ViewColumn.One);
@@ -199,11 +358,13 @@ function openPortalPanel(
   const version = String(
     (context.extension.packageJSON as { version?: string }).version ?? ''
   );
+  const session = await getStoredSession(context);
   panel.webview.html = getWebviewContent(
     panel.webview,
     context.extensionUri,
     user,
-    version
+    version,
+    session
   );
 
   // Mensajes que llegan desde el webview (JS del panel) hacia la extensión.
@@ -227,6 +388,11 @@ function openPortalPanel(
         } else {
           void vscode.window.showInformationMessage(`KDD Portal: ${message.text}`);
         }
+      }
+      // Login real (action=auth): abre el navegador del SISTEMA, nunca el
+      // panel — ver beginLogin y handleAuthCallback más abajo.
+      if (message.type === 'iniciarLogin') {
+        void beginLogin(context, panel);
       }
       // Clic en una fuente citada por la Knowledge Base: en modo real abre
       // el documento local sincronizado; en demo, una notificación.
@@ -305,7 +471,8 @@ function getWebviewContent(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
   user: UserInfo,
-  version: string
+  version: string,
+  session: StoredSession | undefined
 ): string {
   const styleUri = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, 'media', 'main.css')
@@ -327,7 +494,8 @@ function getWebviewContent(
     appsScriptUrl: portal.appsScriptUrl,
     token: portal.tokenAcceso,
     rutaKb: portal.rutaKb,
-    version
+    version,
+    sesion: session ?? null
   }).replace(/</g, '\\u003c');
 
   // CSP: solo recursos locales de la extensión + nonce para los scripts.
@@ -365,6 +533,7 @@ function getWebviewContent(
       </div>
       <div class="topbar-right">
         <span class="badge-demo" id="badgeDemo" hidden>MODO DEMO</span>
+        <button class="btn primary" id="btnConectar" type="button" hidden>Conectar</button>
         <span class="avatar avatar-own" id="userAvatar" title=""></span>
       </div>
     </header>

@@ -3,7 +3,9 @@
 Checklist completo para conectar la extensión con Google. Al terminar,
 en VS Code solo hay que rellenar **dos ajustes** (no hace falta
 recompilar nada): `kddPortal.appsScriptUrl` y `kddPortal.emailUsuario`,
-y desactivar `kddPortal.modoMock`.
+desactivar `kddPortal.modoMock` y pulsar **«Conectar»** una vez dentro
+del panel (login real, ver 6ter — necesario si la Web App está
+desplegada con acceso por dominio, el caso recomendado).
 
 ---
 
@@ -13,7 +15,7 @@ y desactivar `kddPortal.modoMock`.
 |---|---|---|
 | **Spreadsheet «KDD Portal»** | 1 (nuevo) | Base de datos del portal: hojas `Config`, `Usuarios`, `Formaciones`, `Asistentes` (las crea `setup()`). |
 | **Spreadsheet del informe TRA** | 1 (ya existe) | `1gFNF-N5IXBwjTaUpH27BzhZ0fj-b1plkzkps1e68Vb0`, hoja `PORTAL`. Solo lectura; `tra.gs` ya apunta a él. |
-| **Proyecto de Apps Script** | 1 (nuevo) | Los 6 archivos de `backend/` desplegados como Web App. |
+| **Proyecto de Apps Script** | 1 (nuevo) | Los 7 archivos de `backend/` desplegados como Web App. |
 | **Google Groups** | 1 por equipo (4) | El «chat» de cada equipo (pueden ser groups ya existentes). |
 | **Carpetas de Drive (KB)** | 1 por equipo (4) | Los documentos de la Knowledge Base de cada equipo. |
 | **Calendario compartido** | 1 del área (opcional: 1 por equipo) | Los eventos de las formaciones. |
@@ -25,8 +27,11 @@ y desactivar `kddPortal.modoMock`.
 montado (4 hojas + hoja LEEME con instrucciones y celdas a rellenar en
 amarillo). En Google Sheets: crear hoja de cálculo vacía → Archivo →
 Importar → Subir → «Reemplazar hoja de cálculo». Con esta vía **no hace
-falta ejecutar `setup()`** — las hojas ya existen. Copia el ID del
-spreadsheet (entre `/d/` y `/edit` en la URL).
+falta ejecutar `setup()`** para las 4 hojas — ya existen — pero la
+plantilla no trae la hoja `Sesiones` (se añadió después, para el login
+del punto 6ter): ejecuta `setup()` una vez de todos modos, es aditivo y
+no toca las hojas que ya existen. Copia el ID del spreadsheet (entre
+`/d/` y `/edit` en la URL).
 
 **Vía manual:** crea un Sheets vacío y deja que `setup()` (paso 3) cree
 las hojas. En ambos casos, las dos hojas a rellenar a mano:
@@ -60,6 +65,7 @@ las hojas. En ambos casos, las dos hojas a rellenar a mano:
 2. Crea un archivo por cada `.gs` de `backend/` y pega su contenido:
    - `router.gs` — doGet/doPost y tabla de acciones
    - `config.gs` — CONFIG + hojas Config/Usuarios + `setup()`
+   - `auth.gs` — login real (`action=auth`) + hoja Sesiones (ver 6ter)
    - `chat.gs` — chat ↔ correo del Google Group (caché 15 s)
    - `formaciones.gs` — Sheets + Calendar + aviso al grupo
    - `kb.gs` — índice/descarga de la KB desde Drive
@@ -73,18 +79,19 @@ las hojas. En ambos casos, las dos hojas a rellenar a mano:
 5. Ejecuta una vez la función **`setup()`** desde el editor (botón
    ▶ Ejecutar). La primera vez pedirá autorizar todos los permisos —
    acéptalos con la cuenta que vaya a «ejecutar» la Web App. `setup()`
-   crea las 4 hojas con cabeceras y filas de ejemplo.
+   crea las 5 hojas (incluida `Sesiones`) con cabeceras y filas de
+   ejemplo; es aditiva, no toca las que ya existan.
 6. Rellena las hojas `Config` y `Usuarios` (paso 2).
 7. **Implementar → Nueva implementación → Aplicación web**:
    - «Ejecutar como»: **tú** (la cuenta propietaria — sus permisos de
      Gmail/Drive/Calendar son los que usará el backend).
-   - «Quién tiene acceso»: **Cualquier persona**. NO elijas «cualquier
-     usuario de tu dominio»: el webview de VS Code hace `fetch` sin
-     sesión de Google, así que con acceso por dominio la extensión
-     recibirá la pantalla de login en vez de JSON (ver detalle y
-     mitigación con token en el punto 5bis). El manifiesto de
-     `backend/appsscript.json` ya trae `"access": "ANYONE_ANONYMOUS"`
-     para que la implementación se proponga así por defecto.
+   - «Quién tiene acceso»: **Cualquier usuario de tu dominio**. El
+     manifiesto de `backend/appsscript.json` ya trae `"access": "DOMAIN"`
+     para que la implementación se proponga así por defecto. Si tu
+     Workspace SÍ permite «Cualquier persona» y prefieres esa vía más
+     simple, también funciona (ver 5bis) — pero no hace falta: el login
+     del punto 6ter hace que el acceso por dominio funcione igual de
+     bien, sin depender de que el admin habilite el acceso público.
    - Copia la **URL que termina en `/exec`**.
 
 > Cada vez que cambies el código del proyecto: Implementar → Gestionar
@@ -130,34 +137,34 @@ Si algo devuelve `{"ok":false,…}`, el campo `error` dice qué falta
 
 - Despliegue con acceso **«Cualquier usuario de tu dominio»** (URL tipo
   `script.google.com/a/macros/tudominio.com/...`): el navegador con tu
-  sesión lo ve bien, pero la extensión recibirá la página de login en
-  vez de JSON → todo mostrará «Sin conexión». **No sirve para la
-  extensión.**
-- Despliegue con acceso **«Cualquier persona»**: responde JSON anónimo y
-  la extensión funciona. Mitigación del riesgo: define un **token
-  compartido** — el backend lo exige y la URL sola deja de ser
-  suficiente.
+  sesión lo ve bien, pero un `fetch` anónimo del webview recibiría la
+  página de login en vez de JSON. **Es el caso recomendado** — el login
+  real del punto 6ter resuelve justo esto: la extensión abre `action=auth`
+  en tu navegador de verdad (no en el webview) para el primer contacto, y
+  a partir de ahí manda un token propio en cada llamada.
+- Despliegue con acceso **«Cualquier persona»**: también funciona (el
+  login es opcional en ese caso, pero no molesta tenerlo activo).
+  Muchos Workspace corporativos no ofrecen esta opción en absoluto — no
+  hace falta pedirla si usas el login.
 
 **Prueba decisiva (30 s):** abre `<URL/exec>?action=ping` en una ventana
-de **incógnito**. ¿JSON `{"ok":true,…}`? → vale para la extensión.
-¿Pantalla de login de Google? → hay que redesplegar con «Cualquier
-persona»: Implementar → Gestionar implementaciones → ✏️ Editar → «Quién
-tiene acceso: Cualquier persona» → Nueva versión (usa la URL que muestre
-el diálogo).
+de **incógnito**. ¿JSON `{"ok":true,…}`? → confirma que el despliegue
+responde. ¿Pantalla de login de Google? → normal con acceso por dominio
+y sin sesión — es justo la situación que resuelve el login del webview
+en un navegador CON sesión (punto 6ter), no algo que haya que arreglar
+aquí.
 
-**Activar el token compartido:**
+**Activar el token compartido** (recomendado siempre, imprescindible si
+despliegas con «Cualquier persona»):
 
 1. En Apps Script: ⚙️ Configuración del proyecto → «Propiedades del
    script» → Añadir: propiedad `TOKEN_ACCESO`, valor una cadena larga
    aleatoria (p. ej. 30+ caracteres).
 2. En VS Code: pega el mismo valor en el ajuste `kddPortal.tokenAcceso`.
 3. Al verificar por navegador, añade `&token=EL_VALOR` a las URLs de
-   prueba. Sin token válido el backend responde
-   `{"ok":false,"error":"Token de acceso inválido o ausente"}`.
-
-Si tu Workspace no permite el acceso «Cualquier persona» (lo decide el
-administrador del dominio), la extensión no podrá llamar al backend;
-habría que pedir excepción al admin o plantear otra vía de auth.
+   prueba (incluido `action=auth`). Sin token válido el backend responde
+   `{"ok":false,"error":"Token de acceso inválido o ausente"}` (y
+   `action=auth` muestra una página de error equivalente en vez de JSON).
 
 ## 6. Conectar la extensión (sin recompilar)
 
@@ -186,6 +193,40 @@ elijas, respetando su TeamId):
   de los no configurados mostrará «Sin conexión» (su KB sigue simulada).
   Es el comportamiento esperado del despliegue por fases; al incorporar
   cada equipo, basta con completar su fila en `Config`.
+
+## 6ter. Conectar tu sesión (login real, v0.10.0)
+
+Con la Web App desplegada como «Cualquier usuario de tu dominio» (5bis),
+`kddPortal.emailUsuario` sigue siendo obligatorio para abrir el panel
+(es la identidad que se muestra mientras no hay sesión), pero **las
+llamadas al backend necesitan además una sesión verificada** — si no,
+verás el mismo error de siempre («Failed to fetch» / «Error conectando
+con el backend»).
+
+1. Abre el panel con el modo real ya configurado (paso 6). Verás un
+   botón **«Conectar»** en la barra superior.
+2. Al pulsarlo se abre tu navegador del sistema (NO el panel) en
+   `<URL/exec>?action=auth`. Como es tu navegador real, con tu sesión de
+   Google ya iniciada, esta vez sí supera la puerta de acceso del
+   dominio.
+3. Dentro de Apps Script, `Session.getActiveUser().getEmail()` identifica
+   tu cuenta de forma fiable (lo pone Google, no se puede falsificar
+   desde el cliente) y la contrasta con la hoja `Usuarios`. Si todo
+   cuadra, crea una fila en la hoja `Sesiones` (token aleatorio, válido
+   `CONFIG.SESSION_HOURS` horas — 24 por defecto) y la página redirige
+   de vuelta a VS Code (`vscode://kdd-demo.kdd-portal/auth?data=…`).
+4. VS Code recibe ese enlace, guarda el token de sesión de forma
+   cifrada (`context.secrets`, no en un ajuste) y el botón pasa a
+   «✓ Conectado». A partir de aquí, todas las llamadas del webview
+   llevan ese token y el backend resuelve tu email real con él —
+   `kddPortal.emailUsuario` deja de usarse para las llamadas (sigue
+   marcando qué se muestra ANTES de conectar).
+5. La sesión caduca a las 24h: el botón «Conectar» reaparece y hay que
+   repetir el paso 2 (no hace falta tocar ajustes ni reabrir el panel).
+
+Si el navegador no vuelve solo a VS Code (algunos SO piden confirmar
+«¿Abrir Visual Studio Code?» la primera vez), la página de resultado
+también tiene un botón «Volver a VS Code» para pulsar a mano.
 
 ## 7. Knowledge Base real (v0.9.0): Drive → local + Copilot
 

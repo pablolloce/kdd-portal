@@ -6,6 +6,8 @@
  *  Proyecto único de Apps Script con módulos separados:
  *    - router.gs       → doGet/doPost (este archivo)
  *    - config.gs       → CONFIG + hojas "Config" y "Usuarios" + setup()
+ *    - auth.gs         → login real (action=auth) para despliegues
+ *                        restringidos al dominio + hoja "Sesiones"
  *    - chat.gs         → chat ↔ correo del Google Group de cada equipo
  *    - formaciones.gs  → Sheets + Calendar + aviso al grupo
  *    - kb.gs           → índice y descarga de la Knowledge Base desde Drive
@@ -13,11 +15,11 @@
  *
  *  CÓMO DESPLEGAR
  *  ──────────────
- *  1. script.google.com → proyecto nuevo → pega estos 5 archivos.
+ *  1. script.google.com → proyecto nuevo → pega estos 7 archivos.
  *  2. Manifest: copia backend/appsscript.json (Configuración → mostrarlo).
  *  3. Rellena CONFIG en config.gs (spreadsheet, calendario del área).
  *  4. Ejecuta setup() una vez: crea las hojas Config / Usuarios /
- *     Formaciones / Asistentes con cabeceras y filas de ejemplo.
+ *     Formaciones / Asistentes / Sesiones con cabeceras y filas de ejemplo.
  *  5. Rellena la hoja "Config" (un equipo por fila: grupo, carpeta de KB…)
  *     y la hoja "Usuarios" (email → equipo).
  *  6. Implementar → Aplicación web → copia la URL /exec en APPS_SCRIPT_URL
@@ -27,9 +29,15 @@
  *  cliente envía los POST como text/plain (sin preflight, que Apps Script
  *  no soporta) con el JSON en el body.
  *
+ *  ACCESO POR DOMINIO Y LOGIN: ver DESPLIEGUE.md 5bis y auth.gs — el
+ *  webview no tiene sesión de Google, así que con la Web App restringida
+ *  al dominio, la extensión pasa primero por action=auth (navegador real
+ *  del usuario) antes de poder llamar al resto de acciones con éxito.
+ *
  *  ACCIONES
  *  ────────
  *   GET  ?action=ping
+ *   GET  ?action=auth&state=…                 → HTML (login, ver auth.gs)
  *   GET  ?action=getUserInfo&email=…          → { team }
  *   GET  ?action=getTeams                     → { teams[] } (hoja Config)
  *   GET  ?action=getChat&team=…               → { messages[] }
@@ -40,6 +48,10 @@
  *   POST {action:'sendMessage', team, name, email, text}
  *   POST {action:'createFormacion', team, name, email, titulo, fecha, descripcion}
  *   POST {action:'rsvp', email, id}
+ *
+ *  Todas las acciones (salvo auth) aceptan opcionalmente `sessionToken`
+ *  (del login): si es válido, su email verificado sustituye al parámetro
+ *  `email` — ver resolveEmail_ en auth.gs.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -61,9 +73,19 @@ function checkToken_(provided) {
 }
 
 function doGet(e) {
+  var p = (e && e.parameter) || {};
+  // action=auth se abre en el navegador REAL del usuario (no en el webview,
+  // que no tiene sesión de Google) y siempre debe devolver una página HTML,
+  // incluso si falla: se gestiona aparte, antes del catch-all que responde
+  // JSON. Ver auth.gs.
+  if ((p.action || '') === 'auth') {
+    return handleAuthLogin_(p);
+  }
   try {
-    var p = (e && e.parameter) || {};
     checkToken_(p.token);
+    // Prioriza el email verificado por sesión (login real) sobre el que
+    // manda el cliente; sin sessionToken, se comporta como siempre.
+    p.email = resolveEmail_(p);
     switch (p.action || '') {
       case 'ping':
         return jsonOut_({ ok: true, pong: new Date().toISOString() });
@@ -93,6 +115,7 @@ function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);
     checkToken_(body.token);
+    body.email = resolveEmail_(body);
     switch (body.action || '') {
       case 'sendMessage':
         sendChatMessage_(requireTeam_(body.team), body.name, body.email, body.text);

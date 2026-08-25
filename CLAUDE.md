@@ -35,7 +35,8 @@ media/main.css      Estilos con variables --vscode-* (se adapta a cualquier
                     tema). Regla global [hidden]{display:none !important}.
 media/logo.svg      Logo «N» (cinta plegada) + icon.png 256px (manifest).
 backend/*.gs        Apps Script real (un solo proyecto): router, config,
-                    chat, formaciones, kb, tra. Ver cabecera de router.gs.
+                    auth (login real, action=auth), chat, formaciones, kb,
+                    tra. Ver cabecera de router.gs.
 backend/instrucciones-kb-copilot.md  Prompt ad-hoc del chat de KB.
 test/               Harness Playwright (build-test-html.mjs + test-webview.mjs).
 ```
@@ -106,13 +107,31 @@ real da 27.687,25 h). Sin SDATOOL → usar `non_sda_project` como proyecto
 
 - La extensión YA se conmuta sin recompilar, vía ajustes de VS Code:
   `kddPortal.modoMock` (default true), `kddPortal.appsScriptUrl`,
-  `kddPortal.emailUsuario` (identidad elegida: email confiado del
-  dominio; el usuario NO tiene API de Gemini ni proveedor de auth de
-  Google) y `kddPortal.nombreUsuario`. Insignia: «MODO DEMO»/«CONECTADO»
-  + versión. Polling del chat: 3 s mock / 20 s real (cuotas GmailApp).
+  `kddPortal.emailUsuario` (identidad mostrada ANTES de conectar y
+  obligatoria para abrir el panel; VS Code no trae proveedor de auth de
+  Google, así que no se usa `vscode.authentication`) y
+  `kddPortal.nombreUsuario`. Insignia: «MODO DEMO»/«CONECTADO» +
+  versión. Polling del chat: 3 s mock / 20 s real (cuotas GmailApp).
 - **Checklist completo de despliegue en `backend/DESPLIEGUE.md`**
-  (spreadsheet del portal + setup(), hoja Config/Usuarios, Web App,
-  groups, carpetas KB de Drive, calendario, verificación con ?action=).
+  (spreadsheet del portal + setup(), hoja Config/Usuarios/Sesiones, Web
+  App, groups, carpetas KB de Drive, calendario, verificación con
+  ?action=).
+- **Login real (v0.10.0, `backend/auth.gs` + botón «Conectar»)**: la Web
+  App normalmente se despliega restringida al dominio («Cualquier
+  usuario de tu dominio») — algunos Workspace corporativos ni siquiera
+  ofrecen «Cualquier persona» como opción. El webview hace `fetch` SIN
+  cookies de Google, así que sin más no supera esa puerta. Solución: el
+  botón «Conectar» de la barra superior abre `action=auth` en el
+  **navegador del sistema** (`vscode.env.openExternal`, no el panel);
+  ese navegador SÍ lleva la sesión de Google, así que dentro del script
+  `Session.getActiveUser().getEmail()` identifica a la persona de forma
+  fiable. Se crea un token propio (hoja `Sesiones`, `CONFIG.SESSION_HOURS`
+  = 24h) y una página redirige a `vscode://kdd-demo.kdd-portal/auth?data=…`
+  (`registerUriHandler` en extension.ts, anti-replay con `state`). El
+  webview manda ese `sessionToken` en cada llamada real; el backend
+  prioriza el email verificado por sesión sobre el `email` que manda el
+  cliente (`resolveEmail_`, compatible hacia atrás sin sesión). NO usa
+  OAuth de Google ni cliente en Cloud Console — solo Apps Script.
 - **Hito pendiente (KB-Copilot)**: la pestaña KB responde con el mock
   incluso en modo real. Falta: sincronizar la KB Drive→local
   (`getKbIndex`/`getKbFile` ya existen en el backend) y responder con

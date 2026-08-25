@@ -59,6 +59,15 @@
 
   const USER = CONFIG.user || { name: 'Usuario demo', email: 'demo@banco.demo' };
 
+  /**
+   * Sesión real del login (backend/auth.gs, action=auth): { token, email }
+   * o null mientras no se ha conectado. La inyecta la extensión si ya
+   * había una guardada (context.secrets); se actualiza en vivo al recibir
+   * el mensaje 'loginOk' (ver wireLogin). api() la adjunta como
+   * sessionToken en cada llamada real cuando existe.
+   */
+  let sesion = CONFIG.sesion || null;
+
   // ──────────────────────────────────────────────────────────── Utilidades ──
 
   function $(id) {
@@ -833,7 +842,8 @@
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(Object.assign(
           { action: action, team: teamId, email: USER.email,
-            name: USER.name, token: ACCESS_TOKEN },
+            name: USER.name, token: ACCESS_TOKEN,
+            sessionToken: sesion ? sesion.token : '' },
           payload
         ))
       });
@@ -844,7 +854,8 @@
       '?action=' + encodeURIComponent(action) +
       '&team=' + encodeURIComponent(teamId) +
       '&email=' + encodeURIComponent(USER.email) +
-      (ACCESS_TOKEN ? '&token=' + encodeURIComponent(ACCESS_TOKEN) : '');
+      (ACCESS_TOKEN ? '&token=' + encodeURIComponent(ACCESS_TOKEN) : '') +
+      (sesion ? '&sessionToken=' + encodeURIComponent(sesion.token) : '');
     const res = await fetch(url);
     return res.json();
   }
@@ -852,6 +863,14 @@
   // ─────────────────────────────────────────────────────── Estado de la UI ──
 
   const state = {
+    /**
+     * true en cuanto init() supera loadTeams() y engancha los listeners
+     * (sección "3) Menú inicial" en adelante). Si sigue en false tras un
+     * intento de login, es seguro volver a llamar a init(): la primera
+     * vez no llegó a enganchar nada (permite reintentar sin duplicar
+     * listeners; ver wireLogin/loginOk más abajo).
+     */
+    initOk: false,
     /** Equipo al que pertenece la usuaria (lo indica el backend). */
     userTeamId: null,
     /** Equipo abierto (null mientras se está en el menú). */
@@ -2134,6 +2153,57 @@
     textarea.style.height = Math.min(textarea.scrollHeight, 110) + 'px';
   }
 
+  // ────────────────────────────────────────────── Login (action=auth) ──
+
+  /** Sincroniza el botón «Conectar» con el estado actual de `sesion`. */
+  function actualizarBotonConectar() {
+    const btn = $('btnConectar');
+    if (MOCK_MODE) {
+      btn.hidden = true;
+      return;
+    }
+    btn.hidden = false;
+    btn.disabled = Boolean(sesion);
+    btn.classList.toggle('primary', !sesion);
+    btn.classList.toggle('joined', Boolean(sesion));
+    btn.textContent = sesion ? '✓ Conectado' : 'Conectar';
+  }
+
+  /**
+   * Engancha el botón «Conectar» y los mensajes de login. Se llama SIEMPRE
+   * al arrancar, antes de init() — así funciona aunque init() falle nada
+   * más empezar (justo el caso en el que hace falta: sin sesión, modo
+   * real, loadTeams() revienta y init() vuelve enseguida sin enganchar
+   * nada más).
+   */
+  function wireLogin() {
+    actualizarBotonConectar();
+    $('btnConectar').addEventListener('click', function () {
+      if (sesion) return;
+      const btn = $('btnConectar');
+      btn.disabled = true;
+      btn.textContent = 'Conectando…';
+      vscode.postMessage({ type: 'iniciarLogin' });
+    });
+    window.addEventListener('message', function (event) {
+      const msg = (event && event.data) || {};
+      if (msg.type === 'loginOk') {
+        sesion = { token: msg.sessionToken, email: msg.email };
+        actualizarBotonConectar();
+        toast('✓ Conectado como ' + msg.email);
+        // Primer login tras un loadTeams() fallido: init() no llegó a
+        // enganchar nada la primera vez, así que reintentar es seguro
+        // (ver el comentario de state.initOk en init()).
+        if (!state.initOk) {
+          init();
+        }
+      } else if (msg.type === 'loginError') {
+        actualizarBotonConectar();
+        toastError('Conectar', msg.error);
+      }
+    });
+  }
+
   // ───────────────────────────────────────────────────────── Arranque ──
 
   async function init() {
@@ -2157,12 +2227,18 @@
         $('teamsGrid').innerHTML =
           '<div class="empty"><span class="empty-icon">⚠️</span>' +
           'No se pudieron cargar los equipos: ' + escapeHtml(motivo) +
-          '.<br>Revisa los ajustes de KDD Portal o el despliegue del backend' +
-          ' (backend/DESPLIEGUE.md). El panel se recarga al guardar los ajustes.</div>';
+          '.<br>Si aún no está en verde el botón «Conectar» de la barra ' +
+          'superior, púlsalo y completa el login en el navegador. Si ya ' +
+          'estás conectado, revisa los ajustes de KDD Portal o el ' +
+          'despliegue del backend (backend/DESPLIEGUE.md).</div>';
         toastError('Equipos', motivo);
         return;
       }
     }
+    // A partir de aquí no hay más "return" antes de enganchar los
+    // listeners (sección 3 en adelante): a partir de ahora, reintentar
+    // llamando a init() otra vez duplicaría listeners. Ver wireLogin.
+    state.initOk = true;
 
     // 1) El backend indica el equipo del usuario (hoja "Usuarios").
     let teamUsuario = '';
@@ -2355,6 +2431,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
+    wireLogin();
     init();
   });
 })();
