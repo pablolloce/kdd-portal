@@ -66,11 +66,21 @@ function createFormacion_(body) {
 
   // 1) Evento en Calendar — OPCIONAL: si el equipo/área no tiene
   // calendario configurado (vacío o placeholder), la formación se
-  // registra igualmente solo en Sheets.
+  // registra igualmente solo en Sheets. El MOTIVO de no crear evento se
+  // devuelve como aviso: en silencio parecía un fallo del portal.
   var evento = null;
-  if (esCalendarValido_(team.calendarId)) {
+  var motivoSinEvento = '';
+  if (!esCalendarValido_(team.calendarId)) {
+    motivoSinEvento =
+      'no hay calendario configurado (columna CalendarId de la hoja Config ' +
+      'del equipo, o CONFIG.CALENDAR_ID del área en config.gs)';
+  } else {
     var calendar = CalendarApp.getCalendarById(team.calendarId);
-    if (calendar) {
+    if (!calendar) {
+      motivoSinEvento =
+        'la cuenta que ejecuta la Web App no ve el calendario «' +
+        team.calendarId + '» (¿compartido con permiso «Hacer cambios en eventos»?)';
+    } else {
       evento = calendar.createEvent(body.titulo, inicio, fin, {
         description:
           (body.descripcion || '') +
@@ -112,7 +122,10 @@ function createFormacion_(body) {
     creador: body.name,
     teamId: body.team,
     asistentes: 1,
-    apuntado: true
+    apuntado: true,
+    aviso: evento
+      ? ''
+      : 'Registrada SIN evento de calendario: ' + motivoSinEvento
   };
 }
 

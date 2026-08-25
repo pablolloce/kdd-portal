@@ -1140,6 +1140,7 @@ function rutaSegura(p: string): string {
 
 /** GET al backend GAS con email/token, exigiendo respuesta JSON. */
 async function gasGetJson(
+  context: vscode.ExtensionContext,
   cfg: PortalConfig,
   params: Record<string, string>
 ): Promise<Record<string, unknown>> {
@@ -1153,14 +1154,25 @@ async function gasGetJson(
   if (cfg.emailUsuario) url.searchParams.set('email', cfg.emailUsuario);
   if (cfg.tokenAcceso) url.searchParams.set('token', cfg.tokenAcceso);
 
-  const res = await fetch(url.toString(), { redirect: 'follow' });
+  // Mismo transporte que callBackendReal: el Bearer compartido de la
+  // sesión es lo que supera la puerta de acceso por dominio — sin él, la
+  // sincronización de la KB rebotaba al login aunque el resto del panel
+  // funcionara (este camino se quedó atrás al migrar api() al proxy).
+  const session = await getStoredSession(context);
+  const headers: Record<string, string> = {};
+  if (session?.sharedBearerToken) {
+    headers.Authorization = `Bearer ${session.sharedBearerToken}`;
+  }
+  if (session?.token) {
+    url.searchParams.set('sessionToken', session.token);
+  }
+
+  const res = await fetch(url.toString(), { headers, redirect: 'follow' });
   const text = await res.text();
   try {
     return JSON.parse(text) as Record<string, unknown>;
   } catch {
-    throw new Error(
-      'El backend no devolvió JSON (¿Web App restringida al dominio o token incorrecto?)'
-    );
+    throw new Error(clasificarHtmlDeGoogle(res.status, res.url, text));
   }
 }
 
@@ -1177,7 +1189,7 @@ async function kbSyncTeam(
   cfg: PortalConfig,
   teamId: string
 ): Promise<{ docs: number; bajados: number; ruta: string }> {
-  const idx = await gasGetJson(cfg, { action: 'getKbIndex', team: teamId });
+  const idx = await gasGetJson(context, cfg, { action: 'getKbIndex', team: teamId });
   if (!idx.ok) {
     throw new Error(String(idx.error ?? 'getKbIndex falló'));
   }
@@ -1197,7 +1209,7 @@ async function kbSyncTeam(
   let bajados = 0;
   for (const f of soportados) {
     if (manifest[f.id] === f.updated) continue;
-    const res = await gasGetJson(cfg, {
+    const res = await gasGetJson(context, cfg, {
       action: 'getKbFile',
       team: teamId,
       fileId: f.id

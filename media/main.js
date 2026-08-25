@@ -1798,7 +1798,35 @@
       state.kbSynced[msg.teamId] = msg.docs;
       const team = teamById(msg.teamId);
       if (team) team.kbDocs = msg.docs;
-      if (state.currentTeamId === msg.teamId && state.screen === 'team') {
+      const visible =
+        state.currentTeamId === msg.teamId && state.screen === 'team';
+
+      // Carpeta de Drive sin documentos: se dice claramente en la propia
+      // KB (no hay nada que consultar), en vez de un contador a 0 y un
+      // error críptico de Copilot en la primera pregunta.
+      if (!msg.docs) {
+        if (visible) {
+          $('kbDocs').textContent = '📄 sin documentos';
+          $('kbDocs').title = msg.ruta || '';
+          const hist = kbHistory(msg.teamId);
+          hist.push({
+            id: uid(),
+            role: 'assistant',
+            text:
+              'ℹ️ Este equipo aún **no tiene Knowledge Base**: su carpeta de ' +
+              'Drive no contiene ningún documento compatible (Google Docs, ' +
+              '`.md` o `.txt`). Añade documentación a la carpeta del equipo ' +
+              'y pulsa «⟳ Sincronizar».',
+            sources: [],
+            date: Date.now()
+          });
+          appendKbMessage(hist[hist.length - 1]);
+        }
+        toast('ℹ️ La carpeta de Drive de la KB está vacía');
+        return;
+      }
+
+      if (visible) {
         $('kbDocs').textContent = '📄 ' + msg.docs + ' docs sincronizados';
         $('kbDocs').title = msg.ruta || '';
       }
@@ -1948,11 +1976,20 @@
         );
         state.calSelected = isoDay(fechaCompleta);
         await refreshFormaciones();
-        toast('🎓 Formación creada y notificada a tu equipo (simulado).');
+        // El backend avisa si la formación quedó SIN evento de calendario
+        // (y de por qué): sin este aviso parecía un fallo silencioso.
+        const aviso = data.formacion && data.formacion.aviso;
+        if (aviso) {
+          toast('🎓 Formación creada y notificada al grupo. ⚠️ ' + aviso);
+        } else {
+          toast(MOCK_MODE
+            ? '🎓 Formación creada y notificada a tu equipo (simulado).'
+            : '🎓 Formación creada: evento en el calendario y aviso al grupo.');
+        }
         vscode.postMessage({
           type: 'notify',
           level: 'info',
-          text: 'Formación «' + titulo + '» creada.'
+          text: 'Formación «' + titulo + '» creada.' + (aviso ? ' ⚠️ ' + aviso : '')
         });
       } else {
         throw new Error((data && data.error) || 'Error');
