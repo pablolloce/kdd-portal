@@ -1058,6 +1058,32 @@ body {
   text-decoration: none;
 }
 
+/* Pantalla inicial de conexión (modo real sin sesión): solo el botón. */
+.connect-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 72px 24px;
+  text-align: center;
+}
+
+.connect-cta p {
+  margin: 0;
+  max-width: 420px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--vscode-descriptionForeground);
+}
+
+.btn.btn-grande {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 36px;
+  border-radius: 8px;
+}
+
 .team-card:hover {
   transform: translateY(-2px);
   border-color: var(--vscode-focusBorder);

@@ -112,6 +112,52 @@ let currentPanel: vscode.WebviewPanel | undefined;
 let pendingLoginState: string | undefined;
 let pendingLoginTimer: ReturnType<typeof setTimeout> | undefined;
 
+/**
+ * Aviso proactivo de caducidad del token compartido (~1h): un minuto
+ * antes de que caduque, el webview recibe 'loginExpired' y pasa el botón
+ * a «DESCONECTADO · reconectar» sin esperar a que falle una llamada.
+ */
+let sessionExpiryTimer: ReturnType<typeof setTimeout> | undefined;
+
+function armarAvisoDeCaducidad(caducaEnMin: number): void {
+  if (sessionExpiryTimer) {
+    clearTimeout(sessionExpiryTimer);
+    sessionExpiryTimer = undefined;
+  }
+  if (!Number.isFinite(caducaEnMin) || caducaEnMin <= 0) {
+    return;
+  }
+  sessionExpiryTimer = setTimeout(() => {
+    sessionExpiryTimer = undefined;
+    if (currentPanel) {
+      void currentPanel.webview.postMessage({ type: 'loginExpired' });
+    }
+  }, Math.max(1, caducaEnMin - 1) * 60000);
+}
+
+/**
+ * Responde al 'checkSession' del webview: ¿la sesión guardada sigue
+ * teniendo un token compartido vivo? (El webview lo pide al arrancar con
+ * sesión inyectada — puede llevar horas guardada de un arranque anterior.)
+ */
+async function comprobarSesionGuardada(
+  context: vscode.ExtensionContext,
+  post: (m: unknown) => void
+): Promise<void> {
+  const session = await getStoredSession(context);
+  if (!session?.sharedBearerToken) {
+    post({ type: 'sessionStatus', ok: false });
+    return;
+  }
+  const sonda = await probarTokenCompartido(session.sharedBearerToken);
+  if ('error' in sonda || !sonda.email || sonda.caducaEnMin <= 0) {
+    post({ type: 'sessionStatus', ok: false });
+    return;
+  }
+  armarAvisoDeCaducidad(sonda.caducaEnMin);
+  post({ type: 'sessionStatus', ok: true, caducaEnMin: sonda.caducaEnMin });
+}
+
 async function getStoredSession(
   context: vscode.ExtensionContext
 ): Promise<StoredSession | undefined> {
@@ -373,6 +419,7 @@ async function handleAuthCallback(
             `caduca en ~${sonda.caducaEnMin} min · scopes: ` +
             sonda.scopes.map((s) => s.split('/').pop()).join(', ')
         );
+        armarAvisoDeCaducidad(sonda.caducaEnMin);
       }
     } else {
       void vscode.window.showWarningMessage(
@@ -484,12 +531,16 @@ async function parseJsonODiagnostico(res: Response): Promise<unknown> {
   try {
     return JSON.parse(text);
   } catch {
+    const triaje = clasificarHtmlDeGoogle(res.status, res.url, text);
     return {
       ok: false,
       error:
-        clasificarHtmlDeGoogle(res.status, res.url, text) +
+        triaje.mensaje +
         ` [HTTP ${res.status} desde ${res.url}. Extracto: ` +
-        `${text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200)}]`
+        `${text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200)}]`,
+      // El webview usa esta marca para pasar el botón a DESCONECTADO y
+      // ofrecer reconectar, en vez de enseñar el error en crudo.
+      authExpired: triaje.causa === 'login-redirect'
     };
   }
 }
@@ -499,37 +550,45 @@ function clasificarHtmlDeGoogle(
   status: number,
   finalUrl: string,
   text: string
-): string {
+): { causa: string; mensaje: string } {
   const u = (text + ' ' + finalUrl).toLowerCase();
   if (
     /accounts\.google\.com|servicelogin|\bsign in\b|iniciar sesi|saml|\/idp\.|idp\./.test(u)
   ) {
-    return (
-      'Google redirigió al login: no aceptó el token de la cabecera. ' +
-      'Si has redesplegado el backend después de conectar, tu token guardado ' +
-      'es ANTERIOR al cambio: pulsa «✓ Conectado · renovar» para acuñar uno ' +
-      'nuevo. Si ya renovaste y sigue pasando, el token no lleva el scope de ' +
-      'identidad (userinfo.email): repega backend/appsscript.json, ejecuta ' +
-      'setup() para RE-AUTORIZAR, publica Nueva versión y renueva otra vez.'
-    );
+    return {
+      causa: 'login-redirect',
+      mensaje:
+        'Google no aceptó el token: la sesión ha caducado o el token se acuñó ' +
+        'antes del último redespliegue del backend. Pulsa «Conectar» / ' +
+        '«DESCONECTADO · reconectar» para acuñar uno nuevo. Si acabas de ' +
+        'reconectar y sigue pasando, falta el scope userinfo.email: repega ' +
+        'backend/appsscript.json, ejecuta setup() para RE-AUTORIZAR y publica ' +
+        'Nueva versión.'
+    };
   }
   if (/authorization is required|se requiere autorizaci|authorization required/.test(u)) {
-    return (
-      'Google exige re-autorizar el proyecto: el token no cubre los scopes ' +
-      'del manifiesto. Ejecuta setup() desde el editor de Apps Script, acepta ' +
-      'los permisos y vuelve a Conectar.'
-    );
+    return {
+      causa: 'authorization-required',
+      mensaje:
+        'Google exige re-autorizar el proyecto: el token no cubre los scopes ' +
+        'del manifiesto. Ejecuta setup() desde el editor de Apps Script, acepta ' +
+        'los permisos y vuelve a Conectar.'
+    };
   }
   if (/you need access|no tienes acceso|unable to open the file|no se puede abrir/.test(u)) {
-    return (
-      'Esta cuenta no puede EJECUTAR esa implementación (Google lo muestra ' +
-      'como acceso denegado). Revisa «Quién tiene acceso» en la implementación.'
-    );
+    return {
+      causa: 'no-deployment-access',
+      mensaje:
+        'Esta cuenta no puede EJECUTAR esa implementación (Google lo muestra ' +
+        'como acceso denegado). Revisa «Quién tiene acceso» en la implementación.'
+    };
   }
-  return (
-    'Google respondió su propia página en vez de dejar pasar la petición a ' +
-    'Apps Script — sesión caducada o deployment mal configurado.'
-  );
+  return {
+    causa: 'unclassified-html',
+    mensaje:
+      'Google respondió su propia página en vez de dejar pasar la petición a ' +
+      'Apps Script — sesión caducada o deployment mal configurado.'
+  };
 }
 
 /**
@@ -645,6 +704,10 @@ async function openPortalPanel(
       // panel — ver beginLogin y handleAuthCallback más abajo.
       if (message.type === 'iniciarLogin') {
         void beginLogin(context, panel);
+      }
+      // ¿Sigue viva la sesión guardada? (al arrancar el panel con sesión).
+      if (message.type === 'checkSession') {
+        void comprobarSesionGuardada(context, post);
       }
       // Llamada real al backend (modo real): la hace la extensión (Node.js,
       // sin CORS) para poder mandar el token compartido como
@@ -828,7 +891,7 @@ function getWebviewContent(
     <!-- ══════════════════ PANTALLA: MENÚ INICIAL ══════════════════ -->
     <main class="screen" id="screenHome">
       <section class="panel home-panel">
-        <div class="tabs" role="tablist">
+        <div class="tabs" role="tablist" id="homeTabs">
           <button class="tab active" id="tabTeams" type="button" role="tab"
             aria-selected="true">🏦 Equipos</button>
           <button class="tab" id="tabCalendar" type="button" role="tab"
@@ -870,11 +933,12 @@ function getWebviewContent(
             <div class="field-row">
               <div class="field">
                 <label for="fFecha">Fecha</label>
-                <input id="fFecha" type="date">
+                <input id="fFecha" type="text" inputmode="numeric"
+                  placeholder="dd/mm/aaaa" maxlength="10" autocomplete="off">
               </div>
               <div class="field">
                 <label for="fHora">Hora</label>
-                <input id="fHora" type="time" value="10:00">
+                <select id="fHora"></select>
               </div>
             </div>
             <div class="field">
@@ -1196,7 +1260,7 @@ async function gasGetJson(
   try {
     return JSON.parse(text) as Record<string, unknown>;
   } catch {
-    throw new Error(clasificarHtmlDeGoogle(res.status, res.url, text));
+    throw new Error(clasificarHtmlDeGoogle(res.status, res.url, text).mensaje);
   }
 }
 

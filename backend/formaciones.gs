@@ -107,8 +107,7 @@ function createFormacion_(body) {
     body:
       'Se ha publicado una nueva formación:\n\n' +
       '  📚 ' + body.titulo + '\n' +
-      '  🗓️ ' + Utilities.formatDate(inicio, Session.getScriptTimeZone(),
-        "EEEE d 'de' MMMM, HH:mm") + '\n\n' +
+      '  🗓️ ' + fechaLargaES_(inicio) + '\n\n' +
       (body.descripcion || '') + '\n\n' +
       'Apúntate desde el panel KDD Portal de VS Code.',
     name: 'KDD Portal'
@@ -184,6 +183,25 @@ function rsvpFormacion_(body) {
 /** true si el id de calendario está configurado de verdad (no placeholder). */
 function esCalendarValido_(calendarId) {
   return Boolean(calendarId) && String(calendarId).indexOf('PEGA_') === -1;
+}
+
+/**
+ * Fecha larga EN ESPAÑOL («martes 26 de agosto, 20:00»).
+ * Utilities.formatDate con EEEE/MMMM pinta los nombres en el locale del
+ * script (inglés: «Tuesday 25 de August»), así que los nombres se ponen
+ * a mano; los números sí salen de formatDate para respetar la zona
+ * horaria del proyecto.
+ */
+function fechaLargaES_(fecha) {
+  var tz = Session.getScriptTimeZone();
+  var dias = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+  var meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+    'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  var diaSemana = dias[Number(Utilities.formatDate(fecha, tz, 'u')) - 1] || '';
+  var dia = Number(Utilities.formatDate(fecha, tz, 'd'));
+  var mes = meses[Number(Utilities.formatDate(fecha, tz, 'M')) - 1] || '';
+  var hora = Utilities.formatDate(fecha, tz, 'HH:mm');
+  return (diaSemana ? diaSemana + ' ' : '') + dia + ' de ' + mes + ', ' + hora;
 }
 
 /** Índice { formacionId: [email, …] } a partir de la hoja "Asistentes". */

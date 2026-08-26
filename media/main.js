@@ -115,6 +115,34 @@
     });
   }
 
+  /** Date → "dd/mm/aaaa" (formato español del formulario de formaciones). */
+  function fechaES(date) {
+    const d = String(date.getDate()).padStart(2, '0');
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    return d + '/' + m + '/' + date.getFullYear();
+  }
+
+  /**
+   * "dd/mm/aaaa" → Date (a las 00:00 locales), o null si no es una fecha
+   * válida de verdad (rechaza 31/02/2026 y similares).
+   */
+  function parseFechaES(text) {
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(text || '').trim());
+    if (!m) return null;
+    const dia = Number(m[1]);
+    const mes = Number(m[2]);
+    const anio = Number(m[3]);
+    const fecha = new Date(anio, mes - 1, dia);
+    if (
+      fecha.getFullYear() !== anio ||
+      fecha.getMonth() !== mes - 1 ||
+      fecha.getDate() !== dia
+    ) {
+      return null;
+    }
+    return fecha;
+  }
+
   function rand(min, max) {
     return Math.floor(min + Math.random() * (max - min));
   }
@@ -488,7 +516,10 @@
   async function loadTeams() {
     const data = await api('getTeams');
     if (!data || !data.ok) {
-      throw new Error((data && data.error) || 'getTeams no respondió');
+      const err = new Error((data && data.error) || 'getTeams no respondió');
+      // Marca de la extensión: la llamada rebotó por sesión caducada.
+      err.authExpired = Boolean(data && data.authExpired);
+      throw err;
     }
     TEAMS = (data.teams || []).map(buildRealTeam);
     if (!TEAMS.length) {
@@ -1952,16 +1983,25 @@
     event.preventDefault();
 
     const titulo = $('fTitulo').value.trim();
-    const fecha = $('fFecha').value;
+    const fechaTexto = $('fFecha').value;
     const hora = $('fHora').value || '10:00';
     const descripcion = $('fDesc').value.trim();
 
-    if (!titulo || !fecha) {
+    if (!titulo || !fechaTexto) {
       toast('⚠️ El título y la fecha son obligatorios');
       return;
     }
 
-    const fechaCompleta = new Date(fecha + 'T' + hora);
+    const fechaBase = parseFechaES(fechaTexto);
+    if (!fechaBase) {
+      toast('⚠️ Fecha no válida: usa el formato dd/mm/aaaa');
+      return;
+    }
+    const partesHora = hora.split(':');
+    const fechaCompleta = new Date(
+      fechaBase.getFullYear(), fechaBase.getMonth(), fechaBase.getDate(),
+      Number(partesHora[0]), Number(partesHora[1] || 0)
+    );
     if (fechaCompleta.getTime() < Date.now() - 60000) {
       toast('⚠️ La fecha debe ser futura');
       return;
@@ -2200,12 +2240,9 @@
       $('formNote').textContent =
         'Se creará a nombre de tu equipo (' + myTeam.icon + ' ' +
         myTeam.corto + ') y se avisará a su grupo.';
-      const today = new Date();
-      const iso = today.toISOString().slice(0, 10);
       const fFecha = $('fFecha');
-      fFecha.min = iso;
       if (!fFecha.value) {
-        fFecha.value = iso;
+        fFecha.value = fechaES(new Date());
       }
       $('fTitulo').focus();
     }
@@ -2218,26 +2255,87 @@
 
   // ────────────────────────────────────────────── Login (action=auth) ──
 
-  /** Sincroniza el botón «Conectar» con el estado actual de `sesion`. */
+  /** true cuando la sesión existe pero su token ya no vale (caducó ~1h). */
+  let sesionExpirada = false;
+
+  /**
+   * Sincroniza el botón «Conectar» con el estado actual. Tres estados:
+   * sin sesión → «Conectar» (primario); sesión viva → «✓ Conectado ·
+   * renovar»; sesión caducada → «DESCONECTADO · reconectar» (aviso).
+   * NUNCA se deshabilita: pulsar siempre (re)lanza el login — un botón
+   * bloqueado dejaba atrapado al usuario con un token inservible.
+   */
   function actualizarBotonConectar() {
     const btn = $('btnConectar');
     if (MOCK_MODE) {
       btn.hidden = true;
       return;
     }
-    // Con sesión el botón NO se deshabilita: pulsar de nuevo renueva el
-    // token. Imprescindible tras un redespliegue del backend (el token
-    // guardado se acuñó con los scopes viejos) o cuando caduque el token
-    // compartido (~1h) — un botón bloqueado dejaba atrapado al usuario
-    // con un token inservible y sin manera de pedir otro.
     btn.hidden = false;
     btn.disabled = false;
-    btn.classList.toggle('primary', !sesion);
-    btn.classList.toggle('joined', Boolean(sesion));
-    btn.textContent = sesion ? '✓ Conectado · renovar' : 'Conectar';
-    btn.title = sesion
-      ? 'Sesión activa. Pulsa para renovarla (necesario tras redesplegar el backend o si caduca el token compartido).'
-      : 'Iniciar sesión con tu cuenta corporativa en el navegador';
+    btn.classList.remove('primary', 'joined', 'warn');
+    if (!sesion) {
+      btn.classList.add('primary');
+      btn.textContent = 'Conectar';
+      btn.title = 'Iniciar sesión con tu cuenta corporativa en el navegador';
+    } else if (sesionExpirada) {
+      btn.classList.add('warn');
+      btn.textContent = 'DESCONECTADO · reconectar';
+      btn.title = 'La sesión ha caducado. Pulsa para reconectar en el navegador.';
+    } else {
+      btn.classList.add('joined');
+      btn.textContent = '✓ Conectado · renovar';
+      btn.title =
+        'Sesión activa. Pulsa para renovarla (necesario tras redesplegar el backend o si caduca el token compartido).';
+    }
+  }
+
+  /** Lanza el login mostrando el estado «Conectando…» en el botón. */
+  function iniciarLoginUI() {
+    const btn = $('btnConectar');
+    btn.disabled = true;
+    btn.textContent = 'Conectando…';
+    vscode.postMessage({ type: 'iniciarLogin' });
+  }
+
+  /**
+   * La sesión ya no vale (caducidad avisada por la extensión o detectada
+   * en una llamada). El botón pasa a DESCONECTADO y, si aún no se había
+   * llegado a cargar nada, se muestra la pantalla grande de conexión.
+   */
+  function marcarDesconectado() {
+    if (!sesion || sesionExpirada) {
+      sesionExpirada = Boolean(sesion);
+      actualizarBotonConectar();
+      return;
+    }
+    sesionExpirada = true;
+    actualizarBotonConectar();
+    toastError('Sesión', 'ha caducado — pulsa «DESCONECTADO · reconectar»');
+    if (!state.initOk) {
+      mostrarConectarGrande();
+    }
+  }
+
+  /**
+   * Pantalla inicial sin sesión (o con sesión caducada antes de cargar):
+   * SOLO el botón grande de conectar — sin pestañas ni errores en crudo.
+   */
+  function mostrarConectarGrande() {
+    $('userLine').textContent = 'Sin conexión';
+    $('homeTabs').hidden = true;
+    $('teamsGrid').innerHTML =
+      '<div class="connect-cta">' +
+      '<p>Conecta tu cuenta corporativa para entrar al portal: se abre tu ' +
+      'navegador, verificas tu identidad de Google y vuelves aquí.</p>' +
+      '<button class="btn primary btn-grande" id="btnConectarGrande" type="button">' +
+      (sesionExpirada ? 'Reconectar' : 'Conectar') + '</button>' +
+      '</div>';
+    $('btnConectarGrande').addEventListener('click', function () {
+      $('btnConectarGrande').disabled = true;
+      $('btnConectarGrande').textContent = 'Conectando…';
+      iniciarLoginUI();
+    });
   }
 
   /**
@@ -2249,12 +2347,7 @@
    */
   function wireLogin() {
     actualizarBotonConectar();
-    $('btnConectar').addEventListener('click', function () {
-      const btn = $('btnConectar');
-      btn.disabled = true;
-      btn.textContent = 'Conectando…';
-      vscode.postMessage({ type: 'iniciarLogin' });
-    });
+    $('btnConectar').addEventListener('click', iniciarLoginUI);
     window.addEventListener('message', function (event) {
       const msg = (event && event.data) || {};
       if (msg.type === 'loginOk') {
@@ -2263,25 +2356,50 @@
         // el email, para la UI del botón. api() ya no lo necesita: cada
         // llamada real se la pide a la extensión (ver apiReal).
         sesion = { email: msg.email };
+        sesionExpirada = false;
         actualizarBotonConectar();
         toast('✓ Conectado como ' + msg.email);
-        // Primer login tras un loadTeams() fallido: init() no llegó a
-        // enganchar nada la primera vez, así que reintentar es seguro
-        // (ver el comentario de state.initOk en init()).
+        // Primer login tras un arranque sin sesión (o caducada): init()
+        // no llegó a enganchar nada, así que reintentar es seguro (ver
+        // el comentario de state.initOk en init()).
         if (!state.initOk) {
           init();
         }
       } else if (msg.type === 'loginError') {
         actualizarBotonConectar();
         toastError('Conectar', msg.error);
+        // Reactiva también el botón grande si es el que está en pantalla.
+        const grande = document.getElementById('btnConectarGrande');
+        if (grande) {
+          grande.disabled = false;
+          grande.textContent = sesionExpirada ? 'Reconectar' : 'Conectar';
+        }
+      } else if (msg.type === 'loginExpired') {
+        // Aviso proactivo de la extensión (~1 min antes de caducar).
+        marcarDesconectado();
+      } else if (msg.type === 'sessionStatus') {
+        // Respuesta al checkSession del arranque con sesión guardada.
+        if (!msg.ok) {
+          marcarDesconectado();
+        }
       } else if (msg.type === 'apiResult' && msg.reqId) {
         const resolve = apiPending[msg.reqId];
         if (resolve) {
           delete apiPending[msg.reqId];
           resolve(msg.data);
         }
+        // Cualquier llamada rechazada por caducidad pasa el botón a
+        // DESCONECTADO, venga de donde venga (polling del chat incluido).
+        if (msg.data && msg.data.authExpired) {
+          marcarDesconectado();
+        }
       }
     });
+    // La sesión inyectada puede llevar horas guardada: se comprueba si
+    // su token sigue vivo (la extensión responde con sessionStatus).
+    if (!MOCK_MODE && sesion) {
+      vscode.postMessage({ type: 'checkSession' });
+    }
   }
 
   // ───────────────────────────────────────────────────────── Arranque ──
@@ -2297,20 +2415,31 @@
     }
     $('userLine').textContent = 'Identificando usuario…';
 
-    // 0) Modo real: los equipos salen de la hoja Config del backend.
+    // 0) Modo real SIN sesión: nada de llamadas ni errores en crudo —
+    // solo la pantalla de conexión. Tras conectar, loginOk relanza init().
+    if (!MOCK_MODE && (!sesion || sesionExpirada)) {
+      mostrarConectarGrande();
+      return;
+    }
+
+    // 0bis) Modo real: los equipos salen de la hoja Config del backend.
     if (!MOCK_MODE) {
       try {
         await loadTeams();
       } catch (err) {
+        // Token caducado: pantalla de conexión, no el error en crudo.
+        if (err && err.authExpired) {
+          marcarDesconectado();
+          mostrarConectarGrande();
+          return;
+        }
         const motivo = (err && err.message) || 'error desconocido';
         $('userLine').textContent = 'Error conectando con el backend';
         $('teamsGrid').innerHTML =
           '<div class="empty"><span class="empty-icon">⚠️</span>' +
           'No se pudieron cargar los equipos: ' + escapeHtml(motivo) +
-          '.<br>Si aún no está en verde el botón «Conectar» de la barra ' +
-          'superior, púlsalo y completa el login en el navegador. Si ya ' +
-          'estás conectado, revisa los ajustes de KDD Portal o el ' +
-          'despliegue del backend (backend/DESPLIEGUE.md).</div>';
+          '.<br>Revisa los ajustes de KDD Portal o el despliegue del ' +
+          'backend (backend/DESPLIEGUE.md).</div>';
         toastError('Equipos', motivo);
         return;
       }
@@ -2319,6 +2448,7 @@
     // listeners (sección 3 en adelante): a partir de ahora, reintentar
     // llamando a init() otra vez duplicaría listeners. Ver wireLogin.
     state.initOk = true;
+    $('homeTabs').hidden = false;
 
     // 1) El backend indica el equipo del usuario (hoja "Usuarios").
     let teamUsuario = '';
@@ -2525,6 +2655,32 @@
     });
 
     // Nueva formación (desde el calendario, a nombre del equipo propio).
+    // Horas en desplegable de medias horas (08:00–19:30): más directo que
+    // el input time nativo, que además se pinta en formato AM/PM inglés.
+    const selHora = $('fHora');
+    for (let h = 8; h <= 19; h++) {
+      ['00', '30'].forEach(function (min) {
+        const valor = String(h).padStart(2, '0') + ':' + min;
+        const opt = document.createElement('option');
+        opt.value = valor;
+        opt.textContent = valor;
+        if (valor === '10:00') opt.selected = true;
+        selHora.appendChild(opt);
+      });
+    }
+    // Fecha en formato español dd/mm/aaaa con las barras automáticas
+    // (el input date nativo se pinta en formato americano mm/dd/aaaa).
+    $('fFecha').addEventListener('input', function () {
+      const campo = $('fFecha');
+      const digitos = campo.value.replace(/\D/g, '').slice(0, 8);
+      let out = digitos;
+      if (digitos.length > 4) {
+        out = digitos.slice(0, 2) + '/' + digitos.slice(2, 4) + '/' + digitos.slice(4);
+      } else if (digitos.length > 2) {
+        out = digitos.slice(0, 2) + '/' + digitos.slice(2);
+      }
+      campo.value = out;
+    });
     $('btnToggleNueva').addEventListener('click', function () {
       toggleFormNueva();
     });
