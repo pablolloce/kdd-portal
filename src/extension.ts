@@ -552,8 +552,13 @@ function clasificarHtmlDeGoogle(
   text: string
 ): { causa: string; mensaje: string } {
   const u = (text + ' ' + finalUrl).toLowerCase();
+  // Un 401/403 de Google ES un rechazo de autenticación, diga lo que diga
+  // el cuerpo (a veces sirve su página de login con un 401 directo, sin
+  // redirección — el cuerpo solo trae internals como window['ppConfig']).
   if (
-    /accounts\.google\.com|servicelogin|\bsign in\b|iniciar sesi|saml|\/idp\.|idp\./.test(u)
+    status === 401 ||
+    status === 403 ||
+    /accounts\.google\.com|servicelogin|\bsign in\b|iniciar sesi|saml|\/idp\.|idp\.|ppconfig/.test(u)
   ) {
     return {
       causa: 'login-redirect',

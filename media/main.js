@@ -164,6 +164,24 @@
       .join('');
   }
 
+  /**
+   * Iniciales a partir del email corporativo: primera letra + primera
+   * letra tras el primer punto de la parte local
+   * («pablo.llorentec.contractor@…» → «PL»). Sin punto, cae a las
+   * iniciales del nombre visible.
+   */
+  function inicialesDeEmail(email, nombreFallback) {
+    const local = String(email || '').split('@')[0];
+    const partes = local.split('.').filter(Boolean);
+    if (partes.length >= 2) {
+      return (partes[0][0] + partes[1][0]).toUpperCase();
+    }
+    if (partes.length === 1 && partes[0]) {
+      return partes[0][0].toUpperCase();
+    }
+    return initials(nombreFallback || '');
+  }
+
   function avatarClass(name) {
     let hash = 0;
     for (let i = 0; i < name.length; i++) {
@@ -2405,14 +2423,22 @@
   // ───────────────────────────────────────────────────────── Arranque ──
 
   async function init() {
-    // Insignia siempre visible: muestra el modo y la versión instalada.
+    // Insignia siempre visible: el MODO y la versión instalada. El estado
+    // de conexión NO va aquí (lo lleva el botón Conectar): la insignia
+    // decía «CONECTADO» solo por estar en modo real, contradiciendo al
+    // botón «DESCONECTADO» de al lado.
     $('badgeDemo').textContent =
-      (MOCK_MODE ? 'MODO DEMO' : 'CONECTADO') +
+      (MOCK_MODE ? 'MODO DEMO' : 'MODO REAL') +
       (CONFIG.version ? ' · v' + CONFIG.version : '');
     $('badgeDemo').hidden = false;
     if (MOCK_MODE) {
       $('demoBanner').hidden = false;
     }
+    // Avatar con las iniciales del correo (pablo.llorentec… → «PL»),
+    // visible también antes de conectar.
+    const avatarIni = $('userAvatar');
+    avatarIni.textContent = inicialesDeEmail(USER.email, USER.name);
+    avatarIni.title = USER.name + ' (' + USER.email + ')';
     $('userLine').textContent = 'Identificando usuario…';
 
     // 0) Modo real SIN sesión: nada de llamadas ni errores en crudo —
@@ -2427,8 +2453,10 @@
       try {
         await loadTeams();
       } catch (err) {
-        // Token caducado: pantalla de conexión, no el error en crudo.
-        if (err && err.authExpired) {
+        // Token caducado — por la marca de ESTA llamada o porque el
+        // checkSession del arranque llegó antes (carrera): pantalla de
+        // conexión, nunca el error en crudo.
+        if ((err && err.authExpired) || sesionExpirada) {
           marcarDesconectado();
           mostrarConectarGrande();
           return;
@@ -2441,6 +2469,13 @@
           '.<br>Revisa los ajustes de KDD Portal o el despliegue del ' +
           'backend (backend/DESPLIEGUE.md).</div>';
         toastError('Equipos', motivo);
+        return;
+      }
+      // Refuerzo de la misma carrera en el otro orden: si el checkSession
+      // marcó la sesión caducada mientras getTeams aún respondía bien
+      // (caducó justo en medio), manda el estado desconectado.
+      if (sesionExpirada) {
+        mostrarConectarGrande();
         return;
       }
     }
@@ -2482,7 +2517,7 @@
       USER.name + ' · ' + USER.email + '  —  ' +
       myTeam.icon + ' ' + myTeam.nombre;
     const avatar = $('userAvatar');
-    avatar.textContent = initials(USER.name);
+    avatar.textContent = inicialesDeEmail(USER.email, USER.name);
     avatar.title = USER.name + ' (' + USER.email + ') · ' + myTeam.nombre;
 
     // 3) Menú inicial.
