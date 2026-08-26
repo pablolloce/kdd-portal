@@ -63,9 +63,15 @@ test/               Harness Playwright (build-test-html.mjs + test-webview.mjs).
   paciencia y usar su KB antes; las respuestas mock tardan 9–16 s frente a
   3–5 s en el propio) y KB «reducida» (banner, contador «4 de 11 docs»,
   etiqueta REDUCIDA y advertencia al pie de cada respuesta).
-- **KB estilo Copilot**: respuestas con streaming, mini-markdown seguro,
-  chips de fuentes clicables (→ notificación VS Code) y preguntas
-  sugeridas por equipo.
+- **KB estilo Copilot**: respuestas con streaming, mini-markdown seguro
+  (incluye enlaces `[texto](destino)` — solo http(s) o rutas `.md`/`.txt`;
+  en real, un enlace a un doc de la KB o a su URL de Drive abre el
+  archivo LOCAL en el editor vía el manifiesto id→ruta de la
+  sincronización, y el resto va al navegador), chips de fuentes
+  clicables y preguntas sugeridas por equipo. Barra de la KB en real:
+  la ruta local es clicable (abrir carpeta / cambiar `kddPortal.rutaKb`
+  con selector nativo) y el botón «Drive ↗» abre la carpeta del equipo
+  (id vía `kbFolder` de getTeams).
 
 ## Pestaña «Proyectos y personas» (informe TRA)
 

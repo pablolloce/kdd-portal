@@ -89,9 +89,19 @@
       .replace(/'/g, '&#39;');
   }
 
-  /** Mini-markdown seguro: **negrita**, `código`, listas "- " y saltos. */
+  /**
+   * Mini-markdown seguro: **negrita**, `código`, listas "- ", saltos y
+   * enlaces [texto](destino). El destino solo puede ser http(s) o una ruta
+   * de documento .md/.txt de la KB (nada de javascript: u otros esquemas);
+   * se renderiza como <a data-href> y el clic lo resuelve la extensión
+   * (documento local de la KB → editor de VS Code; URL → navegador).
+   */
   function mdLite(text) {
     let html = escapeHtml(text);
+    html = html.replace(
+      /\[([^\]]{1,150})\]\((https?:[^\s()<>]{1,600}|[^\s()<>:]{1,300}\.(?:md|txt))\)/gi,
+      '<a class="kb-doclink" data-href="$2">$1</a>'
+    );
     html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
     html = html.replace(/^- (.+)$/gm, '<span class="li">•&nbsp;$1</span>');
@@ -463,6 +473,7 @@
       icon: row.icono || DEFAULT_TEAM_ICONS[index % DEFAULT_TEAM_ICONS.length],
       grupo: row.grupo || '',
       kbFolder: row.teamId,
+      kbDriveId: row.kbFolder || '',
       kbDocs: null,
       hasKb: Boolean(row.hasKb),
       miembros: row.miembros || 0,
@@ -2031,14 +2042,20 @@
     // Contextos de KB y chat.
     if (MOCK_MODE) {
       $('kbPath').textContent = '📁 ' + KB_BASE_PATH + '/' + team.kbFolder;
+      $('kbPath').classList.remove('kb-clickable');
+      $('kbPath').title = '';
       $('kbDocs').textContent = foreign
         ? '📄 ' + reducedDocs(team) + ' de ' + team.kbDocs + ' docs (reducida)'
         : '📄 ' + team.kbDocs + ' docs indexados';
       $('kbEngine').innerHTML = '⚡ Copilot <em>(simulado)</em>';
       $('btnKbSync').hidden = true;
+      $('btnKbDrive').hidden = true;
     } else {
       $('kbPath').textContent =
         '📁 ' + (CONFIG.rutaKb || 'almacén de la extensión') + '/' + team.id;
+      $('kbPath').classList.add('kb-clickable');
+      $('kbPath').title =
+        'Abrir la carpeta local de la KB o cambiar su ubicación (ajuste kddPortal.rutaKb)';
       const sincronizados = state.kbSynced[team.id];
       $('kbDocs').textContent = sincronizados
         ? '📄 ' + sincronizados + ' docs sincronizados' +
@@ -2048,6 +2065,7 @@
           : '📄 KB sin configurar en la hoja Config';
       $('kbEngine').innerHTML = '⚡ Copilot';
       $('btnKbSync').hidden = false;
+      $('btnKbDrive').hidden = !team.kbDriveId;
       // Primera visita al equipo: sincroniza su KB en segundo plano.
       if (team.hasKb && state.kbSynced[team.id] === undefined) {
         state.kbSynced[team.id] = 0;
@@ -2414,6 +2432,34 @@
     // KB real: sincronización manual y alta de formación desde el equipo.
     $('btnKbSync').addEventListener('click', function () {
       if (state.currentTeamId) kbSyncNow(state.currentTeamId, false);
+    });
+    // Carpeta de la KB en Drive, en el navegador.
+    $('btnKbDrive').addEventListener('click', function () {
+      const team = teamById(state.currentTeamId);
+      if (team && team.kbDriveId) {
+        vscode.postMessage({ type: 'openKbDrive', folderId: team.kbDriveId });
+        toast('↗ Abriendo la carpeta de Drive de la KB…');
+      }
+    });
+    // Carpeta local de la KB: abrir en el explorador o cambiar la ruta.
+    $('kbPath').addEventListener('click', function () {
+      if (!MOCK_MODE && state.currentTeamId) {
+        vscode.postMessage({ type: 'kbCarpetaLocal', teamId: state.currentTeamId });
+      }
+    });
+    // Enlaces [texto](destino) dentro de las respuestas de la KB: los
+    // resuelve la extensión (documento de la KB → editor; URL → navegador).
+    $('kbList').addEventListener('click', function (event) {
+      const link = event.target && event.target.closest
+        ? event.target.closest('.kb-doclink')
+        : null;
+      if (!link) return;
+      event.preventDefault();
+      vscode.postMessage({
+        type: 'openKbLink',
+        teamId: state.currentTeamId,
+        href: link.getAttribute('data-href') || ''
+      });
     });
     $('btnNuevaEquipo').addEventListener('click', function () {
       goHome();

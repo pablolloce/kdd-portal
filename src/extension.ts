@@ -629,6 +629,8 @@ async function openPortalPanel(
       email?: string;
       name?: string;
       payload?: Record<string, unknown> | null;
+      folderId?: string;
+      href?: string;
     }) => {
       const post = (m: unknown) => void panel.webview.postMessage(m);
 
@@ -675,6 +677,25 @@ async function openPortalPanel(
       // Abre el informe original de Looker Studio en el navegador.
       if (message.type === 'openLooker') {
         void vscode.env.openExternal(vscode.Uri.parse(LOOKER_STUDIO_URL));
+      }
+      // Carpeta de la KB en Google Drive, en el navegador del sistema.
+      if (message.type === 'openKbDrive' && message.folderId) {
+        const id = String(message.folderId);
+        if (/^[A-Za-z0-9_-]{10,}$/.test(id)) {
+          void vscode.env.openExternal(
+            vscode.Uri.parse('https://drive.google.com/drive/folders/' + id)
+          );
+        }
+      }
+      // Carpeta LOCAL de la KB: abrirla en el explorador o cambiar la ruta
+      // base (ajuste kddPortal.rutaKb) con un selector de carpetas.
+      if (message.type === 'kbCarpetaLocal' && message.teamId) {
+        void kbCarpetaLocal(context, String(message.teamId));
+      }
+      // Enlace dentro de una respuesta de la KB: documento local si se
+      // puede resolver; si no, el navegador.
+      if (message.type === 'openKbLink' && message.href) {
+        void abrirKbLink(context, String(message.teamId ?? ''), String(message.href));
       }
       // Sincroniza la KB de Drive del equipo a la carpeta local.
       if (message.type === 'kbSync' && message.teamId) {
@@ -1003,6 +1024,9 @@ function getWebviewContent(
               <span id="kbEngine">⚡ Copilot <em>(simulado)</em></span>
               <button class="btn ghost kb-sync" id="btnKbSync" type="button"
                 hidden>⟳ Sincronizar</button>
+              <button class="btn ghost kb-sync" id="btnKbDrive" type="button"
+                title="Abrir la carpeta de la KB en Google Drive"
+                hidden>Drive ↗</button>
             </div>
             <div class="warn-banner" id="kbWarn" hidden>
               ⚠️ <strong>Knowledge Base reducida:</strong> estás consultando la
@@ -1198,17 +1222,28 @@ async function kbSyncTeam(
   await fs.mkdir(dir, { recursive: true });
 
   const manifestPath = path.join(dir, '.kdd-manifest.json');
-  let manifest: Record<string, number> = {};
+  // Manifiesto por archivo de Drive: {u: fecha, rel: ruta local relativa}.
+  // El rel permite resolver un enlace de Drive de una respuesta de la KB
+  // al documento local (abrirKbLink). Compatibilidad: las versiones
+  // anteriores guardaban solo el número de fecha.
+  let manifest: Record<string, number | { u: number; rel?: string }> = {};
   try {
     manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
   } catch {
     // Primera sincronización.
   }
+  const fechaDe = (v: number | { u: number } | undefined) =>
+    typeof v === 'number' ? v : v ? v.u : undefined;
 
   const soportados = (idx.files as KbIndexEntry[]).filter((f) => f.supported);
   let bajados = 0;
   for (const f of soportados) {
-    if (manifest[f.id] === f.updated) continue;
+    const rel = rutaSegura(f.path);
+    const relFinal = /\.(md|txt)$/i.test(rel) ? rel : rel + '.md';
+    if (fechaDe(manifest[f.id]) === f.updated) {
+      manifest[f.id] = { u: f.updated, rel: relFinal }; // completa el formato viejo
+      continue;
+    }
     const res = await gasGetJson(context, cfg, {
       action: 'getKbFile',
       team: teamId,
@@ -1219,19 +1254,122 @@ async function kbSyncTeam(
       | undefined;
     if (!res.ok || !file || !file.supported) continue;
 
-    const rel = rutaSegura(f.path);
-    const destino = path.join(
-      dir,
-      /\.(md|txt)$/i.test(rel) ? rel : rel + '.md'
-    );
+    const destino = path.join(dir, relFinal);
     await fs.mkdir(path.dirname(destino), { recursive: true });
     await fs.writeFile(destino, String(file.content ?? ''), 'utf8');
-    manifest[f.id] = f.updated;
+    manifest[f.id] = { u: f.updated, rel: relFinal };
     bajados += 1;
   }
 
   await fs.writeFile(manifestPath, JSON.stringify(manifest), 'utf8');
   return { docs: soportados.length, bajados, ruta: dir };
+}
+
+/**
+ * QuickPick de la carpeta local de la KB: abrirla en el explorador del
+ * sistema o cambiar la carpeta base (ajuste kddPortal.rutaKb) con un
+ * selector nativo. Al cambiar el ajuste, el panel se recarga solo
+ * (onDidChangeConfiguration) y la siguiente sincronización descarga ahí.
+ */
+async function kbCarpetaLocal(
+  context: vscode.ExtensionContext,
+  teamId: string
+): Promise<void> {
+  const cfg = getPortalConfig();
+  const dir = kbTeamDir(context, cfg, teamId);
+
+  const abrir = '$(folder-opened) Abrir la carpeta local de la KB';
+  const cambiar = '$(gear) Cambiar la carpeta base (kddPortal.rutaKb)…';
+  const eleccion = await vscode.window.showQuickPick([abrir, cambiar], {
+    placeHolder: dir
+  });
+
+  if (eleccion === abrir) {
+    await fs.mkdir(dir, { recursive: true });
+    await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dir));
+  } else if (eleccion === cambiar) {
+    const seleccion = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      openLabel: 'Usar esta carpeta para las KB',
+      defaultUri: cfg.rutaKb ? vscode.Uri.file(cfg.rutaKb) : undefined
+    });
+    if (seleccion && seleccion[0]) {
+      await vscode.workspace
+        .getConfiguration('kddPortal')
+        .update('rutaKb', seleccion[0].fsPath, vscode.ConfigurationTarget.Global);
+      void vscode.window.showInformationMessage(
+        `KDD Portal: las KB se descargarán en ${seleccion[0].fsPath} ` +
+          '(una subcarpeta por equipo). Sincroniza de nuevo para poblarla; ' +
+          'lo ya descargado no se mueve de la carpeta anterior.'
+      );
+    }
+  }
+}
+
+/**
+ * Resuelve un enlace de una respuesta de la KB:
+ *  1. URL de Drive/Docs cuyo archivo está sincronizado → documento LOCAL
+ *     en el editor (vía el manifiesto id→rel de la sincronización).
+ *  2. Ruta relativa .md/.txt de la KB → documento local en el editor.
+ *  3. Cualquier otra URL http(s) → navegador del sistema.
+ */
+async function abrirKbLink(
+  context: vscode.ExtensionContext,
+  teamId: string,
+  href: string
+): Promise<void> {
+  const cfg = getPortalConfig();
+  if (cfg.mockMode) {
+    void vscode.window.showInformationMessage(
+      `KDD Portal (demo): aquí se abriría «${href}».`
+    );
+    return;
+  }
+
+  const dir = kbTeamDir(context, cfg, teamId);
+
+  const abrirLocal = async (relPath: string): Promise<boolean> => {
+    const local = path.join(dir, rutaSegura(relPath));
+    try {
+      const doc = await vscode.workspace.openTextDocument(local);
+      await vscode.window.showTextDocument(doc, { preview: true });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  if (/^https?:/i.test(href)) {
+    // ¿Es un archivo de Drive que ya tenemos sincronizado en local?
+    const idMatch =
+      /\/d\/([A-Za-z0-9_-]{10,})/.exec(href) ||
+      /[?&]id=([A-Za-z0-9_-]{10,})/.exec(href);
+    if (idMatch) {
+      try {
+        const manifest = JSON.parse(
+          await fs.readFile(path.join(dir, '.kdd-manifest.json'), 'utf8')
+        ) as Record<string, number | { u: number; rel?: string }>;
+        const entrada = manifest[idMatch[1]];
+        const rel =
+          entrada && typeof entrada === 'object' ? entrada.rel : undefined;
+        if (rel && (await abrirLocal(rel))) {
+          return;
+        }
+      } catch {
+        // Sin manifiesto: se abre en el navegador.
+      }
+    }
+    void vscode.env.openExternal(vscode.Uri.parse(href));
+    return;
+  }
+
+  if (!(await abrirLocal(href))) {
+    void vscode.window.showWarningMessage(
+      `KDD Portal: no se encontró «${href}» en la KB local (sincroniza primero).`
+    );
+  }
 }
 
 interface KbDoc {

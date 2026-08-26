@@ -1032,6 +1032,32 @@ body {
   font-size: 10.5px;
 }
 
+/* Segundo botón de la barra KB (Drive ↗): pegado al de Sincronizar. */
+.kb-sync + .kb-sync {
+  margin-left: 0;
+}
+
+/* Ruta local de la KB clicable (abrir carpeta / cambiar ubicación). */
+.kb-clickable {
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.kb-clickable:hover {
+  color: var(--vscode-textLink-foreground, inherit);
+}
+
+/* Enlace [texto](destino) dentro de una respuesta de la KB. */
+.kb-doclink {
+  color: var(--vscode-textLink-foreground, #3794ff);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.kb-doclink:hover {
+  text-decoration: none;
+}
+
 .team-card:hover {
   transform: translateY(-2px);
   border-color: var(--vscode-focusBorder);

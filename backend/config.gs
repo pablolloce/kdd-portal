@@ -102,13 +102,18 @@ function getTeams_() {
 
   return Object.keys(teams).map(function (id) {
     var t = teams[id];
+    var hasKb = Boolean(t.kbFolderId) && t.kbFolderId.indexOf('PEGA_') === -1;
     return {
       teamId: t.teamId,
       nombre: t.nombre,
       grupo: t.groupEmail,
       icono: t.icono,
       miembros: miembros[id] || 0,
-      hasKb: Boolean(t.kbFolderId) && t.kbFolderId.indexOf('PEGA_') === -1
+      hasKb: hasKb,
+      // Id de la carpeta de Drive de la KB: la extensión lo usa para el
+      // botón «Drive ↗» (abrir la carpeta en el navegador). El id no da
+      // acceso por sí solo — los permisos los sigue mandando Drive.
+      kbFolder: hasKb ? t.kbFolderId : ''
     };
   });
 }
