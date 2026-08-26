@@ -160,36 +160,84 @@ function handleAuthLogin_(p) {
   });
 }
 
-/** Página HTML mínima y autocontenida que redirige a VS Code con el resultado. */
+/**
+ * Página de resultado del login, con la identidad visual del portal: el
+ * logo «N» de cinta plegada (el mismo media/logo.svg de la extensión,
+ * embebido inline) y su paleta de degradados rosa→violeta→azul.
+ * Redirige SIEMPRE a VS Code, también en error: la extensión necesita el
+ * motivo exacto del rechazo (payload.error), no un timeout genérico.
+ */
 function authLandingPage_(payload) {
   var target =
     'vscode://' + AUTH_EXTENSION_ID + '/auth?data=' +
     encodeURIComponent(Utilities.base64Encode(JSON.stringify(payload)));
   var ok = payload.ok === true;
 
+  // media/logo.svg de la extensión, inline (autocontenido, sin fetch).
+  var logo =
+    '<svg class="logo" viewBox="0 0 486 600" aria-hidden="true">' +
+    '<defs>' +
+    '<linearGradient id="gL" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="#9c3a47"/><stop offset="1" stop-color="#ee7245"/></linearGradient>' +
+    '<linearGradient id="gD" gradientUnits="userSpaceOnUse" x1="140" y1="20" x2="420" y2="560">' +
+    '<stop offset="0" stop-color="#e03a60"/><stop offset="0.55" stop-color="#8d57c0"/>' +
+    '<stop offset="1" stop-color="#5052cc"/></linearGradient>' +
+    '<linearGradient id="gR" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="#2e7ef5"/><stop offset="1" stop-color="#2b62e0"/></linearGradient>' +
+    '</defs>' +
+    '<polygon points="5,88 157,2 157,450 5,537" fill="url(#gL)"/>' +
+    '<polygon points="5,88 157,2 481,511 329,598" fill="url(#gD)"/>' +
+    '<polygon points="329,150 481,63 481,511 329,598" fill="url(#gR)"/>' +
+    '</svg>';
+
   var html = [
     '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
     '<title>KDD Portal</title><style>',
-    'body{font-family:-apple-system,"Segoe UI",Roboto,sans-serif;background:#1e1e1e;',
-    'color:#ddd;display:flex;align-items:center;justify-content:center;',
-    'min-height:100vh;margin:0}',
-    '.card{max-width:420px;padding:32px;text-align:center}',
-    '.icon{font-size:40px;margin-bottom:12px}',
-    'h1{font-size:18px;margin:0 0 8px}',
-    'p{font-size:13px;line-height:1.5;color:#aaa;word-break:break-word}',
-    'a.btn{display:inline-block;margin-top:18px;padding:10px 22px;border-radius:6px;',
-    'background:#0e639c;color:#fff;text-decoration:none;font-size:13px}',
+    '*{box-sizing:border-box}',
+    'body{font-family:-apple-system,"Segoe UI",Roboto,sans-serif;margin:0;',
+    'min-height:100vh;display:flex;align-items:center;justify-content:center;',
+    'color:#e8e6f0;background:#0d1024;',
+    'background-image:radial-gradient(600px 420px at 18% 8%,rgba(224,58,96,.28),transparent 65%),',
+    'radial-gradient(640px 460px at 85% 20%,rgba(46,126,245,.25),transparent 65%),',
+    'radial-gradient(720px 560px at 50% 110%,rgba(141,87,192,.30),transparent 70%)}',
+    '.card{max-width:440px;width:calc(100% - 40px);padding:40px 36px 34px;text-align:center;',
+    'background:rgba(19,22,45,.78);border:1px solid rgba(141,87,192,.35);border-radius:16px;',
+    'box-shadow:0 24px 70px rgba(0,0,0,.55);backdrop-filter:blur(6px)}',
+    '.brandbar{height:4px;border-radius:99px;margin:-40px -36px 30px;',
+    'background:linear-gradient(90deg,#e03a60,#8d57c0 45%,#2e7ef5)}',
+    '.logo{width:74px;height:auto;display:block;margin:0 auto 6px;',
+    'filter:drop-shadow(0 8px 22px rgba(141,87,192,.55))}',
+    '.marca{font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:#9aa0c0;margin:0 0 22px}',
+    '.estado{width:52px;height:52px;margin:0 auto 16px;border-radius:50%;display:flex;',
+    'align-items:center;justify-content:center;font-size:24px;',
+    'background:' + (ok
+      ? 'linear-gradient(135deg,rgba(46,126,245,.25),rgba(137,209,133,.25));border:1px solid #89d185'
+      : 'linear-gradient(135deg,rgba(224,58,96,.3),rgba(238,114,69,.25));border:1px solid #ee7245') + '}',
+    'h1{font-size:21px;margin:0 0 10px;font-weight:700;',
+    'background:linear-gradient(90deg,#ff7d9c,#b18ae8 45%,#6ea8ff);',
+    '-webkit-background-clip:text;background-clip:text;color:transparent}',
+    'p{font-size:13.5px;line-height:1.65;color:#b9bdd6;margin:0 0 6px;word-break:break-word}',
+    '.correo{color:#fff;font-weight:600}',
+    'a.btn{display:inline-block;margin-top:22px;padding:12px 34px;border-radius:10px;',
+    'font-size:14px;font-weight:600;color:#fff;text-decoration:none;',
+    'background:linear-gradient(90deg,#e03a60,#8d57c0 55%,#2e7ef5);',
+    'box-shadow:0 10px 28px rgba(80,82,204,.45)}',
+    'a.btn:hover{filter:brightness(1.12)}',
+    '.pie{margin-top:22px;font-size:11px;color:#7c81a3}',
     '</style></head><body><div class="card">',
-    '<div class="icon">' + (ok ? '✅' : '⚠️') + '</div>',
+    '<div class="brandbar"></div>',
+    logo,
+    '<p class="marca">KDD Portal · NFQ</p>',
+    '<div class="estado">' + (ok ? '✓' : '!') + '</div>',
     '<h1>' + escapeHtml_(ok ? 'Conectado a KDD Portal' : 'No se pudo conectar') + '</h1>',
-    '<p>' + escapeHtml_(ok
-      ? 'Identidad verificada como ' + payload.email + '. Vuelve a VS Code (se abre solo; si no, pulsa el botón).'
-      : String(payload.error || 'Error desconocido.') + ' Vuelve a VS Code para verlo (se abre solo; si no, pulsa el botón).') + '</p>',
-    // Redirige SIEMPRE, también si ok es false: la extensión necesita el
-    // motivo exacto del rechazo (payload.error) para mostrarlo, no solo un
-    // timeout genérico a los 60s.
+    ok
+      ? '<p>Identidad verificada como <span class="correo">' + escapeHtml_(payload.email) +
+        '</span>.<br>Vuelve a VS Code — se abre solo; si no, pulsa el botón.</p>'
+      : '<p>' + escapeHtml_(String(payload.error || 'Error desconocido.')) +
+        '<br>Vuelve a VS Code para verlo — se abre solo; si no, pulsa el botón.</p>',
     '<a class="btn" href="' + target + '">Volver a VS Code</a>',
+    '<p class="pie">Puedes cerrar esta pestaña cuando VS Code vuelva a estar en primer plano.</p>',
     '</div>',
     '<script>window.location.href=' + JSON.stringify(target) + ';</script>',
     '</body></html>'
