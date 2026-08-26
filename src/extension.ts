@@ -999,11 +999,8 @@ function getWebviewContent(
               type="button">Reestablecer filtros</button>
           </div>
 
-          <div class="warn-banner info" id="traNote">
-            ℹ️ Información <strong>complementaria</strong> (informe TRA de
-            imputaciones): no todos los equipos ni todas las personas del
-            área aparecen aquí.
-          </div>
+          <!-- Filtros activos (estilo Looker: chips con ✕ y quitar todos) -->
+          <div class="tra-chips" id="traChips" hidden></div>
 
           <div class="dir-scroll">
             <div class="tra-dash">
@@ -1052,9 +1049,10 @@ function getWebviewContent(
           </div>
 
           <div class="dir-foot">
-            <span class="dir-foot-note">Fuente (modo real): Google Sheets del
-              informe TRA vía Apps Script (se actualiza a diario) · informe
-              original en Looker Studio</span>
+            <span class="dir-foot-note">ℹ️ Información complementaria: no
+              todos los equipos ni todas las personas del área aparecen en
+              este informe · Fuente: Google Sheets del informe TRA (diario) ·
+              informe original en Looker Studio</span>
             <button class="btn ghost" id="btnLooker" type="button">Abrir en Looker Studio ↗</button>
           </div>
         </div>

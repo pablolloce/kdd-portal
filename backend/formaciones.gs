@@ -70,16 +70,17 @@ function createFormacion_(body) {
   // devuelve como aviso: en silencio parecía un fallo del portal.
   var evento = null;
   var motivoSinEvento = '';
-  if (!esCalendarValido_(team.calendarId)) {
+  var calId = normalizarCalendarId_(team.calendarId);
+  if (!esCalendarValido_(calId)) {
     motivoSinEvento =
       'no hay calendario configurado (columna CalendarId de la hoja Config ' +
       'del equipo, o CONFIG.CALENDAR_ID del área en config.gs)';
   } else {
-    var calendar = CalendarApp.getCalendarById(team.calendarId);
+    var calendar = CalendarApp.getCalendarById(calId);
     if (!calendar) {
       motivoSinEvento =
         'la cuenta que ejecuta la Web App no ve el calendario «' +
-        team.calendarId + '» (¿compartido con permiso «Hacer cambios en eventos»?)';
+        calId + '» (¿compartido con permiso «Hacer cambios en eventos»?)';
     } else {
       evento = calendar.createEvent(body.titulo, inicio, fin, {
         description:
@@ -153,9 +154,9 @@ function rsvpFormacion_(body) {
   if (asistentes.indexOf(body.email) === -1) {
     // Invitado al evento solo si la formación tiene evento y calendario.
     if (row[4]) {
-      var calendarId = teamId
-        ? getTeamConfig_(teamId).calendarId
-        : CONFIG.CALENDAR_ID;
+      var calendarId = normalizarCalendarId_(
+        teamId ? getTeamConfig_(teamId).calendarId : CONFIG.CALENDAR_ID
+      );
       if (esCalendarValido_(calendarId)) {
         var calendar = CalendarApp.getCalendarById(calendarId);
         var evento = calendar ? calendar.getEventById(row[4]) : null;
@@ -183,6 +184,21 @@ function rsvpFormacion_(body) {
 /** true si el id de calendario está configurado de verdad (no placeholder). */
 function esCalendarValido_(calendarId) {
   return Boolean(calendarId) && String(calendarId).indexOf('PEGA_') === -1;
+}
+
+/**
+ * Normaliza el CalendarId: Google Calendar muestra el id completo
+ * («c_…@group.calendar.google.com»), pero es fácil copiar solo el
+ * prefijo «c_…» — sin el dominio, getCalendarById no lo encuentra y la
+ * formación se registraba sin evento. Si no lleva @ (y no es el
+ * placeholder), se completa con @group.calendar.google.com.
+ */
+function normalizarCalendarId_(calendarId) {
+  var id = String(calendarId || '').trim();
+  if (id && id.indexOf('@') === -1 && id.indexOf('PEGA_') === -1) {
+    id += '@group.calendar.google.com';
+  }
+  return id;
 }
 
 /**

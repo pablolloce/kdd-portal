@@ -1334,6 +1334,71 @@
     renderTraResults();
   }
 
+  /** Quita UN filtro (chip ✕) y sincroniza su selector. */
+  function clearTraFilter(campo) {
+    if (campo === 'q') {
+      state.dirQuery = '';
+      $('dirSearch').value = '';
+    } else {
+      state.traFilters[campo] = '';
+      const selectDe = { nombre: 'fNombre', equipo: 'fEquipo', sda: 'fSda', jira: 'fJira' };
+      $(selectDe[campo]).value = '';
+    }
+    renderTraResults();
+  }
+
+  /**
+   * Chips de filtros activos (estilo Looker/Power BI): uno por filtro con
+   * su ✕, más «Quitar todos». Siempre a la vista cuando hay algo filtrado
+   * — se ve QUÉ está filtrado y se limpia con un clic.
+   */
+  function renderTraChips() {
+    const box = $('traChips');
+    const chips = [];
+    [
+      { campo: 'nombre', icon: '👤' },
+      { campo: 'equipo', icon: '🏦' },
+      { campo: 'sda', icon: '📁' },
+      { campo: 'jira', icon: '🎫' }
+    ].forEach(function (def) {
+      if (state.traFilters[def.campo]) {
+        chips.push({ campo: def.campo, icon: def.icon, texto: state.traFilters[def.campo] });
+      }
+    });
+    if (state.dirQuery) {
+      chips.push({ campo: 'q', icon: '🔎', texto: '«' + state.dirQuery + '»' });
+    }
+
+    if (!chips.length) {
+      box.hidden = true;
+      box.innerHTML = '';
+      return;
+    }
+    box.hidden = false;
+    box.innerHTML =
+      chips.map(function (c) {
+        return (
+          '<button class="tra-chip" type="button" data-campo="' + c.campo + '" ' +
+          'title="Quitar este filtro">' + c.icon + ' ' + escapeHtml(c.texto) +
+          '<span class="tra-chip-x">✕</span></button>'
+        );
+      }).join('') +
+      (chips.length > 1
+        ? '<button class="tra-chip tra-chip-reset" type="button" data-campo="*">' +
+          '✕ Quitar todos</button>'
+        : '');
+    box.querySelectorAll('.tra-chip').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        const campo = chip.getAttribute('data-campo');
+        if (campo === '*') {
+          resetTraFilters();
+        } else {
+          clearTraFilter(campo);
+        }
+      });
+    });
+  }
+
   /** Colores del donut (variables del tema, con fallback). */
   function traChartColors() {
     const styles = getComputedStyle(document.documentElement);
@@ -1402,11 +1467,27 @@
             minimumFractionDigits: 1, maximumFractionDigits: 1
           })
         : '0';
+      // «Otros» agrupa el resto: no es filtrable.
+      const clicable = parte.label !== 'Otros';
       return (
-        '<span class="tra-leg"><i class="leg-c' + (i % 5) + '"></i>' +
+        '<span class="tra-leg' + (clicable ? ' tra-leg-click' : '') + '"' +
+        (clicable
+          ? ' data-sda="' + escapeHtml(parte.label) + '" title="Filtrar por ' +
+            escapeHtml(parte.label) + '"'
+          : '') +
+        '><i class="leg-c' + (i % 5) + '"></i>' +
         escapeHtml(parte.label) + ' · ' + pct + '%</span>'
       );
     }).join('');
+    // Clic en la leyenda del donut → filtra por ese proyecto (toggle).
+    $('traLegend').querySelectorAll('.tra-leg-click').forEach(function (leg) {
+      leg.addEventListener('click', function () {
+        const sda = leg.getAttribute('data-sda');
+        state.traFilters.sda = state.traFilters.sda === sda ? '' : sda;
+        $('fSda').value = state.traFilters.sda;
+        renderTraResults();
+      });
+    });
   }
 
   /** Recalcula KPIs, donut y tablas con los filtros activos. */
@@ -1455,14 +1536,18 @@
     $('cntProyectos').textContent = proyectos.length ? '(' + proyectos.length + ')' : '';
 
     renderTraChart(rows, totalMin);
+    renderTraChips();
 
-    // Tabla de personas (clic en fila → filtra por ese nombre).
+    // Tabla de personas (clic en fila → filtra por ese nombre; la fila
+    // seleccionada queda resaltada y un segundo clic la deselecciona).
     const tbodyPersonas = $('tblPersonas').querySelector('tbody');
     tbodyPersonas.innerHTML = personas.length
       ? personas.map(function (p) {
+          const activa = state.traFilters.nombre === p.nombre;
           return (
-            '<tr data-nombre="' + escapeHtml(p.nombre) + '" ' +
-            'title="Filtrar por ' + escapeHtml(p.nombre) + '">' +
+            '<tr data-nombre="' + escapeHtml(p.nombre) + '"' +
+            (activa ? ' class="tra-active"' : '') + ' ' +
+            'title="' + (activa ? 'Quitar el filtro' : 'Filtrar por ' + escapeHtml(p.nombre)) + '">' +
             '<td>' + escapeHtml(p.nombre) + '</td>' +
             '<td>' + escapeHtml(p.equipo) + '</td>' +
             '<td class="num">' + fmtHoras(p.min) + '</td></tr>'
@@ -1479,13 +1564,16 @@
       });
     });
 
-    // Tabla de proyectos (clic en fila → filtra por ese SDATOOL).
+    // Tabla de proyectos (clic en fila → filtra por ese SDATOOL, con la
+    // misma selección resaltada y toggle).
     const tbodyProyectos = $('tblProyectos').querySelector('tbody');
     tbodyProyectos.innerHTML = proyectos.length
       ? proyectos.map(function (p) {
+          const activa = state.traFilters.sda === p.sda;
           return (
-            '<tr data-sda="' + escapeHtml(p.sda) + '" ' +
-            'title="Filtrar por ' + escapeHtml(p.sda) + '">' +
+            '<tr data-sda="' + escapeHtml(p.sda) + '"' +
+            (activa ? ' class="tra-active"' : '') + ' ' +
+            'title="' + (activa ? 'Quitar el filtro' : 'Filtrar por ' + escapeHtml(p.sda)) + '">' +
             '<td class="mono">' + escapeHtml(p.sda) + '</td>' +
             '<td class="mono">' + escapeHtml(p.jira || '—') + '</td>' +
             '<td class="tra-desc">' + escapeHtml(p.desc) + '</td>' +

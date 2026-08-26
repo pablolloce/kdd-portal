@@ -1381,6 +1381,63 @@ body {
   padding: 0 18px 10px;
 }
 
+/* Chips de filtros activos (estilo Looker: qué está filtrado + ✕). */
+.tra-chips {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 18px 8px;
+}
+
+.tra-chip {
+  font-family: inherit;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  cursor: pointer;
+  color: var(--vscode-badge-foreground, #fff);
+  background: var(--vscode-button-background, #0e639c);
+  border: 1px solid transparent;
+}
+
+.tra-chip:hover {
+  background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
+}
+
+.tra-chip-x {
+  opacity: 0.75;
+  font-size: 10px;
+}
+
+.tra-chip-reset {
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: 1px dashed var(--vscode-panel-border, rgba(127, 127, 127, 0.5));
+}
+
+.tra-chip-reset:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(127, 127, 127, 0.12));
+}
+
+/* Fila seleccionada (filtro activo) en las tablas del TRA. */
+.tra-table tr.tra-active td {
+  background: var(--vscode-list-activeSelectionBackground, rgba(55, 148, 255, 0.18));
+}
+
+/* Leyenda del donut clicable (filtra por ese proyecto). */
+.tra-leg-click {
+  cursor: pointer;
+}
+
+.tra-leg-click:hover {
+  text-decoration: underline;
+}
+
 .tra-filter {
   display: flex;
   flex-direction: column;
