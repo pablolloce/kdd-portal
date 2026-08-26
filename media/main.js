@@ -2460,35 +2460,43 @@
 
   /**
    * La sesión ya no vale (caducidad avisada por la extensión o detectada
-   * en una llamada). El botón pasa a DESCONECTADO y, si aún no se había
-   * llegado a cargar nada, se muestra la pantalla grande de conexión.
+   * en una llamada). El botón pasa a DESCONECTADO y el panel entero se
+   * bloquea en la pantalla de reconexión: sin sesión no se navega.
    */
   function marcarDesconectado() {
-    if (!sesion || sesionExpirada) {
-      sesionExpirada = Boolean(sesion);
-      actualizarBotonConectar();
-      return;
-    }
-    sesionExpirada = true;
+    const yaMarcada = !sesion || sesionExpirada;
+    sesionExpirada = Boolean(sesion);
     actualizarBotonConectar();
-    toastError('Sesión', 'ha caducado — pulsa «DESCONECTADO · reconectar»');
-    if (!state.initOk) {
-      mostrarConectarGrande();
+    if (!yaMarcada) {
+      toastError('Sesión', 'ha caducado — reconecta para seguir');
     }
+    mostrarConectarGrande();
   }
 
   /**
-   * Pantalla inicial sin sesión (o con sesión caducada antes de cargar):
-   * SOLO el botón grande de conectar — sin pestañas ni errores en crudo.
+   * Pantalla de conexión a pantalla completa: fuerza la vuelta al menú,
+   * oculta las pestañas y deja SOLO el botón grande de (re)conectar. Se
+   * usa tanto en el arranque sin sesión como al caducar en mitad del uso
+   * — desconectado no se navega.
    */
   function mostrarConectarGrande() {
     $('userLine').classList.remove('cargando');
     $('userLine').textContent = 'Sin conexión';
+    // Fuerza el menú (cierra la pantalla de equipo y el modal del chat si
+    // estaban abiertos) y deja visible solo la vista de equipos, que es
+    // donde vive el CTA.
+    state.currentTeamId = null;
+    $('chatModal').hidden = true;
+    showScreen('home');
+    activateHomeTab('teams');
     $('homeTabs').hidden = true;
     $('teamsGrid').innerHTML =
       '<div class="connect-cta">' +
-      '<p>Conecta tu cuenta corporativa para entrar al portal: se abre tu ' +
-      'navegador, verificas tu identidad de Google y vuelves aquí.</p>' +
+      '<p>' +
+      (sesionExpirada
+        ? 'Tu sesión ha caducado. Reconecta para seguir usando el portal: '
+        : 'Conecta tu cuenta corporativa para entrar al portal: ') +
+      'se abre tu navegador, verificas tu identidad de Google y vuelves aquí.</p>' +
       '<button class="btn primary btn-grande" id="btnConectarGrande" type="button">' +
       (sesionExpirada ? 'Reconectar' : 'Conectar') + '</button>' +
       '</div>';
@@ -2497,6 +2505,21 @@
       $('btnConectarGrande').textContent = 'Conectando…';
       iniciarLoginUI();
     });
+  }
+
+  /**
+   * Tras reconectar con el panel ya inicializado (init() no puede volver
+   * a correr sin duplicar listeners): restaura la cabecera, las pestañas
+   * y el menú, y refresca los datos con la sesión nueva.
+   */
+  function restaurarTrasReconexion() {
+    $('homeTabs').hidden = false;
+    const myTeam = teamById(state.userTeamId);
+    $('userLine').textContent =
+      USER.name + ' · ' + USER.email + '  —  ' +
+      myTeam.icon + ' ' + myTeam.nombre;
+    goHome();
+    refreshFormaciones();
   }
 
   /**
@@ -2522,9 +2545,13 @@
         toast('✓ Conectado como ' + msg.email);
         // Primer login tras un arranque sin sesión (o caducada): init()
         // no llegó a enganchar nada, así que reintentar es seguro (ver
-        // el comentario de state.initOk en init()).
+        // el comentario de state.initOk en init()). Con el panel ya
+        // inicializado (caducó en mitad del uso), se restaura la UI sin
+        // re-ejecutar init().
         if (!state.initOk) {
           init();
+        } else {
+          restaurarTrasReconexion();
         }
       } else if (msg.type === 'loginError') {
         actualizarBotonConectar();
