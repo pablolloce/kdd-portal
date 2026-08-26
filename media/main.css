@@ -900,6 +900,52 @@ body {
   cursor: default;
 }
 
+/* ─────────────────────────────────────────────── Indicadores de carga */
+
+@keyframes kdd-girar {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 2px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.35));
+  border-top-color: var(--vscode-progressBar-background, var(--vscode-focusBorder, #3794ff));
+  border-radius: 50%;
+  animation: kdd-girar 0.8s linear infinite;
+}
+
+.spinner-mini {
+  width: 11px;
+  height: 11px;
+  border-width: 1.5px;
+}
+
+/* Bloque centrado «cargando…» para listas/tablas vacías mientras llegan. */
+.loading-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 42px 16px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* Línea de usuario del topbar mientras identifica. */
+#userLine.cargando {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Icono ⟳ girando en el botón de sincronizar la KB. */
+.icono-giro {
+  display: inline-block;
+  animation: kdd-girar 0.8s linear infinite;
+}
+
 /* ─────────────────────────────────────────────────────────────────── Toast */
 
 .toast {

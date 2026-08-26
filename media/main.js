@@ -153,6 +153,14 @@
     return 'id-' + Date.now().toString(36) + '-' + idCounter;
   }
 
+  /** Bloque centrado de carga (spinner + texto) para listas y tablas. */
+  function htmlCargando(texto) {
+    return (
+      '<div class="loading-block"><span class="spinner"></span>' +
+      escapeHtml(texto) + '</div>'
+    );
+  }
+
   function initials(name) {
     return name
       .split(/\s+/)
@@ -970,6 +978,8 @@
     calSelected: isoDay(new Date()),
     messages: [],
     formaciones: [],
+    /** true tras la primera carga de formaciones (para mostrar carga). */
+    formacionesCargadas: false,
     sending: false,
     kbBusy: false,
     kbHistories: {}
@@ -1218,6 +1228,12 @@
     );
 
     let html = '<h3 class="cal-detail-title">' + escapeHtml(heading) + '</h3>';
+
+    // Aún sin datos: carga, no un «no hay formaciones» prematuro.
+    if (!state.formacionesCargadas && !state.formaciones.length) {
+      wrap.innerHTML = html + htmlCargando('Cargando formaciones…');
+      return;
+    }
 
     if (items.length) {
       items.forEach(function (f) {
@@ -1608,6 +1624,10 @@
         return;
       }
       $('traTotal').textContent = '…';
+      $('tblPersonas').querySelector('tbody').innerHTML =
+        '<tr><td colspan="3">' + htmlCargando('Cargando el informe TRA…') + '</td></tr>';
+      $('tblProyectos').querySelector('tbody').innerHTML =
+        '<tr><td colspan="4">' + htmlCargando('Cargando el informe TRA…') + '</td></tr>';
       loadTra();
       return;
     }
@@ -1623,6 +1643,12 @@
     const items = state.formaciones.filter(function (f) {
       return f.teamId === state.currentTeamId;
     });
+
+    // Aún sin datos: carga, no un «no hay formaciones» prematuro.
+    if (!state.formacionesCargadas && !items.length) {
+      wrap.innerHTML = htmlCargando('Cargando formaciones…');
+      return;
+    }
 
     if (!items.length) {
       wrap.innerHTML =
@@ -1938,10 +1964,22 @@
       reqId: 'sync-' + (++state.kbReqSeq),
       teamId: teamId
     });
+    // El botón muestra la sincronización en curso (icono girando).
+    const btn = $('btnKbSync');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="icono-giro">⟳</span> Sincronizando…';
     if (!silencioso) toast('⟳ Sincronizando la KB desde Drive…');
   }
 
+  /** Devuelve el botón de sincronizar a su estado normal. */
+  function restaurarBotonKbSync() {
+    const btn = $('btnKbSync');
+    btn.disabled = false;
+    btn.textContent = '⟳ Sincronizar';
+  }
+
   function onKbSyncMessage(msg) {
+    restaurarBotonKbSync();
     if (msg.type === 'kbSyncDone') {
       state.kbSynced[msg.teamId] = msg.docs;
       const team = teamById(msg.teamId);
@@ -2001,12 +2039,24 @@
         $('syncText').textContent = 'Sincronizado · ' + fmtTime(Date.now());
       } else {
         $('syncText').textContent = 'Error';
+        quitarCargaDelChat();
         toastError('Chat', data && data.error);
       }
     } catch (err) {
       if (teamId === state.currentTeamId) {
         $('syncText').textContent = 'Sin conexión';
+        quitarCargaDelChat();
       }
+    }
+  }
+
+  /** Si el chat sigue en «cargando» y la carga falló, lo dice en la lista. */
+  function quitarCargaDelChat() {
+    const list = $('chatList');
+    if (list.querySelector('.loading-block')) {
+      list.innerHTML =
+        '<div class="loading-block">⚠️ No se pudo cargar el chat del grupo ' +
+        '— se reintenta en el siguiente refresco.</div>';
     }
   }
 
@@ -2015,6 +2065,7 @@
       const data = await api('getFormaciones');
       if (data && data.ok) {
         state.formaciones = data.formaciones;
+        state.formacionesCargadas = true;
         if (state.screen === 'team') {
           renderTeamFormaciones();
         } else {
@@ -2231,6 +2282,9 @@
 
     state.messages = [];
     renderChat();
+    // Hasta la primera respuesta del grupo, el chat muestra su carga
+    // (en real la primera lectura de Gmail tarda unos segundos).
+    $('chatList').innerHTML = htmlCargando('Cargando el chat del grupo…');
     setTyping(null);
     $('syncText').textContent = 'Sincronizando…';
     renderKbAll();
@@ -2428,6 +2482,7 @@
    * SOLO el botón grande de conectar — sin pestañas ni errores en crudo.
    */
   function mostrarConectarGrande() {
+    $('userLine').classList.remove('cargando');
     $('userLine').textContent = 'Sin conexión';
     $('homeTabs').hidden = true;
     $('teamsGrid').innerHTML =
@@ -2527,23 +2582,29 @@
     const avatarIni = $('userAvatar');
     avatarIni.textContent = inicialesDeEmail(USER.email, USER.name);
     avatarIni.title = USER.name + ' (' + USER.email + ')';
-    $('userLine').textContent = 'Identificando usuario…';
+    // Spinner pequeño junto al «Identificando usuario…» del topbar.
+    $('userLine').classList.add('cargando');
+    $('userLine').innerHTML =
+      '<span class="spinner spinner-mini"></span>Identificando usuario…';
 
     // 0) Modo real SIN sesión: nada de llamadas ni errores en crudo —
     // solo la pantalla de conexión. Tras conectar, loginOk relanza init().
     if (!MOCK_MODE && (!sesion || sesionExpirada)) {
+      $('userLine').classList.remove('cargando');
       mostrarConectarGrande();
       return;
     }
 
     // 0bis) Modo real: los equipos salen de la hoja Config del backend.
     if (!MOCK_MODE) {
+      $('teamsGrid').innerHTML = htmlCargando('Cargando los equipos del área…');
       try {
         await loadTeams();
       } catch (err) {
         // Token caducado — por la marca de ESTA llamada o porque el
         // checkSession del arranque llegó antes (carrera): pantalla de
         // conexión, nunca el error en crudo.
+        $('userLine').classList.remove('cargando');
         if ((err && err.authExpired) || sesionExpirada) {
           marcarDesconectado();
           mostrarConectarGrande();
@@ -2601,6 +2662,7 @@
     const myTeam = teamById(state.userTeamId);
 
     // 2) Cabecera con identidad + equipo propio.
+    $('userLine').classList.remove('cargando');
     $('userLine').textContent =
       USER.name + ' · ' + USER.email + '  —  ' +
       myTeam.icon + ' ' + myTeam.nombre;
